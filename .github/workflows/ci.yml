@@ -1,0 +1,39 @@
+name: C++ CI
+run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+jobs:
+  build-and-test:
+    name: Test on ${{ matrix.os }}
+      runs-on: ${{ matrix.os }}
+      strategy:
+        matrix:
+          os: [ubuntu-latest, windows-latest]
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Install Ninja on Windows using Chocolatey
+    - name: Install Ninja (Windows)
+      if: runner.os == 'Windows'
+      run: choco install ninja
+
+    # Install Ninja on Linux using APT
+    - name: Install Ninja (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+    # Configure the project in Debug mode
+    - name: Configure CMake
+      run: cmake -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+
+    # Build the engine and the test suite
+    - name: Build
+      run: cmake --build build-debug
+
+    # Run the Catch2 tests using CTest
+    - name: Run Tests
+      run: ctest --test-dir build-debug --output-on-failure
