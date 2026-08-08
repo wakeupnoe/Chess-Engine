@@ -1,4 +1,4 @@
-add_executable(Chess-EngineTests test_core.cpp)
+add_executable(Chess-EngineTests test_bitboard.cpp)
 
 target_link_libraries(Chess-EngineTests PRIVATE EngineLib Catch2::Catch2WithMain)
 

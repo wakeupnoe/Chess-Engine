@@ -1,5 +1,5 @@
 add_library(EngineLib STATIC
-    board.cpp
+    bitboard.cpp
 )
 
 target_include_directories(EngineLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
