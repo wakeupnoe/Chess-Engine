@@ -3,13 +3,16 @@ A competitive C++ Chess engine.
 
 # Current Status
 - Hello world test via CMake succeeded
-- Set up testing environment with Catch2 (but no testcases yet, but also no code so thats fine)
+- Set up testing environment with Catch2
+- Set up basics in types.h and bitboard.h
 
+Currently implementing board-, and move-logic as well as move generatino
 
 # Meta-Plan
-- Set up automatic testing environment via GitHub-Actions
-- Build the project modular and testable, so that bugs get 
-- No AI-written code, only feedback and conceptual use of it
+[y] Set up automatic testing environment via GitHub-Actions
+[ ] Build the project modular and testable, so that bugs get 
+[ ] No AI-written code, only feedback and conceptual use of it
+Use of AI in: all of tests/ nad in .github/workflows/ci.yml, src is AI code free
 
 # Plan for the Engine
 - Use bitboards and operate low-level (e.g. move generation via bitboard shifts)

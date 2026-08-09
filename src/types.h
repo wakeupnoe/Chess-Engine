@@ -5,7 +5,7 @@ using Bitboard = uint64_t;
 using Move = uint16_t;
 
 
-enum Colors : uint8_t{WHITE,BLACK,NO_COLOR};
+enum Color : uint8_t{WHITE,BLACK,NO_COLOR};
 
 enum Piece : uint8_t {PAWN, ROOK, KNIGHT, BISHOP, QUEEN, KING, NO_PIECE_TYPE};
 
