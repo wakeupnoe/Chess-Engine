@@ -21,12 +21,16 @@ enum Square : uint8_t {
     NO_SQUARE // = 64
 };
 
-struct StateInfo {                                                          //  optimal for padding    
-    Bitboard Zobrist_Key; //Incremental Zobrist Hash Key                    //  8 bytes
-    uint8_t castling_rights; //Castling Rights last 4 bits                  //  1 byte
-    Square En_Passant_Target_Square; // En Passant Target Square            //  1 byte
-    uint8_t Half_move_Clock; // Half-move Clock                             //  1 byte
-    Piece Captured_Piece_Type;                                              //  1 byte
-                                                                            //  +4 bytes padding = 16bytes!
+enum CastlingRights : uint8_t {
+    WK = 1, WQ = 2, BK = 4, BQ = 8
+};
+
+struct StateInfo {                                                              //  optimal for padding    
+    Bitboard Zobrist_Key = 0ULL; //Incremental Zobrist Hash Key                 //  8 bytes
+    uint8_t castling_rights = 15; //Castling Rights last 4 bits 1 1 1 1         //  1 byte
+    Square En_Passant_Target_Square = NO_SQUARE; // En Passant Target Square    //  1 byte
+    uint8_t Half_move_Clock = 0; // Half-move Clock                             //  1 byte
+    Piece Captured_Piece_Type = NO_PIECE_TYPE;                                  //  1 byte
+                                                                                //  +4 bytes padding = 16bytes!
 };
 

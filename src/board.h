@@ -12,6 +12,7 @@ private:
     Bitboard colorPieces[2]; // colorPieces[COLOR]
     Bitboard allPieces;
     StateInfo currentState;
+    Color sideToMove;
     std::array<StateInfo, MAX_GAME_PLIES> HistroyStack;
     int gamePly;
 
@@ -21,6 +22,7 @@ public:
     void load_fen(const char* fen);
     void make_move(Move move);
     void unmake_move(Move move);
+    void clear();
 
     inline Bitboard get_pieces(Color c, Piece p){ return pieces[c][p]; }
     inline Bitboard get_all_pices() const {return allPieces; }
