@@ -1,6 +1,5 @@
 #pragma once
 #include "types.h"
-#include "Board.h"
 #include "board.h"
 #include "attacks.h"
 
