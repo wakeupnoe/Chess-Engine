@@ -9,12 +9,12 @@ extern Bitboard BishopAttacks[5248]; // 64*(128/64/32 depending where the bishop
 
 
 extern Bitboard rookMasks[64];
-extern Bitboard rookMagic[64];
+extern Bitboard const rookMagic[64];
 extern Bitboard rookOffsets[64];
 extern int rookShifts[64];
 
 extern Bitboard bishopMasks[64];
-extern Bitboard bishopMagic[64];
+extern Bitboard const bishopMagic[64];
 extern Bitboard bishopOffsets[64];
 extern int bishopShifts[64];
 

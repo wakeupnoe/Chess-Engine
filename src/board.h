@@ -28,5 +28,7 @@ public:
     inline Bitboard get_color_pieces(Color c) const { return colorPieces[c]; }
     inline Bitboard get_all_pieces() const { return allPieces; }
     inline Color get_side_to_move() const { return sideToMove; }
+    inline Bitboard get_en_passant_Bitboard() const { return SquareBB(currentState.En_Passant_Target_Square); }
+    inline int get_castling_rights() const { return currentState.castling_rights; }
 };
 

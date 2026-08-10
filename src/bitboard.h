@@ -15,11 +15,11 @@ inline void PopBit(Bitboard &b, uint8_t tar){
 inline int popcount(Bitboard b){
     return std::popcount(b);
 }
-inline uint8_t lsb(Bitboard b){
+inline int lsb(Bitboard b){
     return std::countr_zero(b);
 }
-inline uint8_t pop_lsb(Bitboard &b){
-    uint8_t sq = lsb(b);
+inline int pop_lsb(Bitboard &b){
+    int sq = lsb(b);
     b&=(b-1);
     return sq;
 }
