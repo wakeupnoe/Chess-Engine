@@ -5,8 +5,12 @@ A competitive C++ Chess engine.
 - Hello world test via CMake succeeded
 - Set up testing environment with Catch2
 - Set up basics in types.h and bitboard.h
+- attack pattern generation for king, knight and rock done!
 
-Currently implementing board-, and move-logic as well as move generatino
+next up: Bishop (+Queen)
+
+Currently implementing board-, and move-logic as well as move generation
+
 
 # Meta-Plan
 [y] Set up automatic testing environment via GitHub-Actions
