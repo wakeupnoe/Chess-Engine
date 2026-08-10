@@ -24,7 +24,9 @@ public:
     void unmake_move(Move move);
     void clear();
 
-    inline Bitboard get_pieces(Color c, Piece p){ return pieces[c][p]; }
-    inline Bitboard get_all_pices() const {return allPieces; }
+    inline Bitboard get_pieces(Color c, Piece p) const { return pieces[c][p]; }
+    inline Bitboard get_color_pieces(Color c) const { return colorPieces[c]; }
+    inline Bitboard get_all_pieces() const { return allPieces; }
+    inline Color get_side_to_move() const { return sideToMove; }
 };
 
