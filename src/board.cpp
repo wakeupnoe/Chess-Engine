@@ -86,20 +86,3 @@ void Board::load_fen(const char* fen){
     currentState.Half_move_Clock = half_move;
     gamePly = 2*(full_move-1) + (sideToMove == BLACK ? 1 : 0);
 }
-
-void Board::make_move(Move move){
-    // (step 0 unpacking the move)
-    // step 1 doing the move in the Bitboards (Bit manipulation)
-
-    // step 2 updating castling rights etc.
-}
-
-
-void Board::unmake_move(Move move){
-    // (step 0 unpacking the move)
-    // step 1 unding the move in the Bitboards (Bit manipulation)
-
-    // step 2 history poping/resotring
-
-    // step 3 zobrist hashing fixing?
-}

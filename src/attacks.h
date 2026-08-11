@@ -33,3 +33,15 @@ inline Bitboard get_bishop_attacks(Square sq, Bitboard allPieces){
 inline Bitboard get_queen_attacks(Square sq, Bitboard allPieces){
     return get_bishop_attacks(sq,allPieces) | get_rook_attacks(sq,allPieces);
 }
+
+
+template <Color Attacker>
+bool is_square_attacked(Square sq, Board& board){
+    /*Bitboard target =  squareBB(sq);
+    get_bishop_attacks(,)
+    for(int piece = PAWN; piece <= KING; piece++){
+        
+        board.pieces[Attacker][piece]
+    }*/
+   return false;
+}

@@ -3,7 +3,9 @@
 
 using Bitboard = uint64_t;
 using Move = uint16_t;
-
+inline int get_from_sq(Move m) { return m & 0x3F; }
+inline int get_to_sq(Move m) { return (m>>6) & 0x3F; }
+inline int get_flags(Move m) { return m >> 12; }
 enum Color : uint8_t{WHITE,BLACK,NO_COLOR};
 
 enum Piece : uint8_t {PAWN, ROOK, KNIGHT, BISHOP, QUEEN, KING, NO_PIECE_TYPE};
