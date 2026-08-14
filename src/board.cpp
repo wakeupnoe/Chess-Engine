@@ -44,6 +44,7 @@ void Board::clear() {
     allPieces = 0ULL;
     currentState = StateInfo(); // StateInfo() is the default constructor for StateInfo and should generate the StateInfo of the starrting position 
     // HistroyStack.fill(StateInfo()); not needed since gamePly=0 means that nothing of value is in the historystack.
+    std::fill(std::begin(pieceOnSquare), std::end(pieceOnSquare), NO_PIECE_TYPE);
     gamePly = 0;
 }
 
@@ -72,6 +73,7 @@ void Board::load_fen(const char* fen){
             Piece p;
             parse_piece_char(c,col,p);
             Square sq = static_cast<Square>(rank * 8 + file);
+            pieceOnSquare[sq] = p;
             
             SetBit(pieces[col][p], sq);
             SetBit(colorPieces[col], sq);

@@ -8,7 +8,7 @@ inline int get_to_sq(Move m) { return (m>>6) & 0x3F; }
 inline int get_flags(Move m) { return m >> 12; }
 enum Color : uint8_t{WHITE,BLACK,NO_COLOR};
 
-enum Piece : uint8_t {PAWN, ROOK, KNIGHT, BISHOP, QUEEN, KING, NO_PIECE_TYPE};
+enum Piece : uint8_t {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, NO_PIECE_TYPE};
 
 enum Square : uint8_t {
     A1,B1,C1,D1,E1,F1,G1,H1,
@@ -24,6 +24,17 @@ enum Square : uint8_t {
 
 enum CastlingRights : uint8_t {
     WK = 1, WQ = 2, BK = 4, BQ = 8
+};
+
+inline constexpr uint8_t CASTLING_MASK[64] = {
+    13, 15, 15, 15, 12, 15, 15, 12,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15, 15, 15,
+     7, 15, 15, 15,  3, 15, 15, 11,
 };
 
 struct StateInfo {                                                              //  optimal for padding    

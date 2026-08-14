@@ -1,4 +1,5 @@
 #pragma once
+#include "board.h"
 #include "types.h"
 
 extern Bitboard KingAttacks[64];
@@ -36,12 +37,12 @@ inline Bitboard get_queen_attacks(Square sq, Bitboard allPieces){
 
 
 template <Color Attacker>
-bool is_square_attacked(Square sq, Board& board){
-    /*Bitboard target =  squareBB(sq);
-    get_bishop_attacks(,)
-    for(int piece = PAWN; piece <= KING; piece++){
-        
-        board.pieces[Attacker][piece]
-    }*/
-   return false;
+bool is_square_attacked(Square tar_sq, const Board& board){
+    Bitboard sq_bb = SquareBB(tar_sq);
+    return  (KnightAttacks[tar_sq] & board.get_pieces(Attacker,KNIGHT))
+        || (KingAttacks[tar_sq] & board.get_pieces(Attacker,KING))
+        || ((Attacker == WHITE ? (sq_bb >> 7) & ~FileBB[FILE_A] : (sq_bb << 7) & ~FileBB[FILE_H]) & board.get_pieces(Attacker,PAWN))
+        || ((Attacker == WHITE ? (sq_bb >> 9) & ~FileBB[FILE_H] : (sq_bb << 9) & ~FileBB[FILE_A]) & board.get_pieces(Attacker,PAWN))
+        || (get_bishop_attacks(tar_sq,board.get_all_pieces()) & (board.get_pieces(Attacker,BISHOP) | board.get_pieces(Attacker,QUEEN)))
+        || (get_rook_attacks(tar_sq,board.get_all_pieces()) & (board.get_pieces(Attacker,ROOK) | board.get_pieces(Attacker,QUEEN)));
 }
