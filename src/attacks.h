@@ -46,3 +46,5 @@ bool is_square_attacked(Square tar_sq, const Board& board){
         || (get_bishop_attacks(tar_sq,board.get_all_pieces()) & (board.get_pieces(Attacker,BISHOP) | board.get_pieces(Attacker,QUEEN)))
         || (get_rook_attacks(tar_sq,board.get_all_pieces()) & (board.get_pieces(Attacker,ROOK) | board.get_pieces(Attacker,QUEEN)));
 }
+
+void init_attacks();
