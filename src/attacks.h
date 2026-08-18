@@ -10,24 +10,26 @@ extern Bitboard BishopAttacks[5248]; // 64*(128/64/32 depending where the bishop
 
 
 extern Bitboard rookMasks[64];
-extern Bitboard const rookMagic[64];
+//extern Bitboard const rookMagic[64];
+extern Bitboard const myRookMagics[64];
 extern Bitboard rookOffsets[64];
 extern int rookShifts[64];
 
 extern Bitboard bishopMasks[64];
-extern Bitboard const bishopMagic[64];
+//extern Bitboard const bishopMagic[64];
+extern Bitboard const myBishopMagics[64];
 extern Bitboard bishopOffsets[64];
 extern int bishopShifts[64];
 
 inline Bitboard get_rook_attacks(Square sq, Bitboard allPieces){
     Bitboard blockers = allPieces & rookMasks[sq];
-    int index = (rookMagic[sq]*blockers) >> rookShifts[sq];
+    int index = (myRookMagics[sq]*blockers) >> rookShifts[sq];
     return RookAttacks[rookOffsets[sq] + index];
 }
 
 inline Bitboard get_bishop_attacks(Square sq, Bitboard allPieces){
     Bitboard blockers = allPieces & bishopMasks[sq];
-    int index = (bishopMagic[sq]*blockers) >> bishopShifts[sq];
+    int index = (myBishopMagics[sq]*blockers) >> bishopShifts[sq];
     return BishopAttacks[bishopOffsets[sq] + index];
 }
 

@@ -1,6 +1,7 @@
 #include "attacks.h"
 #include "bitboard.h"
-
+#include <iostream>
+#include <random>
 
 namespace {
     Bitboard set_blockers(int index, int bitcount, Bitboard attack_mask){
@@ -31,7 +32,7 @@ Bitboard bishopMasks[64];
 Bitboard bishopOffsets[64];
 int bishopShifts[64];
 
-const Bitboard bishopMagic[64] = {
+/*const Bitboard bishopMagic[64] = {
     0x40040844404084ULL,   0x2004208a004208ULL,   0x10190041080202ULL,   0x108060845042010ULL,
     0x581104180800210ULL,  0x211208044620004ULL,  0x41105040825080ULL,   0x41040810a4002000ULL,
     0x140002012040000ULL,  0x10c22204082004ULL,   0x228004808a4104ULL,   0x220104010005084ULL,
@@ -48,9 +49,9 @@ const Bitboard bishopMagic[64] = {
     0x8102040008801ULL,    0x21010040810ULL,      0x2000110201002ULL,    0x4080100104ULL,
     0x402020210444ULL,     0x10080a0100404ULL,    0x4002081084ULL,       0x8001001002ULL,
     0x1004020020022ULL,    0x2080001008ULL,       0x40010020100ULL,      0x840010104ULL
-};
+};*/
 
-const Bitboard rookMagic[64] = {
+/*const Bitboard rookMagic[64] = {
     0x8a80104000800020ULL, 0x140002000100040ULL, 0x2801880a0017001ULL, 0x100081001000420ULL,
     0x200020010080420ULL,  0x3001c0002010008ULL, 0x8480008002000100ULL, 0x2080088004402900ULL,
     0x800098204000ULL,     0x2024401000200040ULL, 0x100802000801000ULL, 0x120800800801000ULL,
@@ -67,6 +68,140 @@ const Bitboard rookMagic[64] = {
     0x1001004080111ULL,    0x1000800811202000ULL, 0x2020010411000200ULL, 0x2008000810800400ULL,
     0x112000a0011002ULL,   0x202004010101ULL,    0x200801011100100ULL,  0x200401101011ULL,
     0x41110048102ULL,      0x410408041004ULL,    0x1022020212ULL,       0x8400a00820ULL
+};*/
+
+const Bitboard myBishopMagics[64] = {
+    0x808080808034010ULL, 
+    0x8021401220a0002ULL,
+    0x4040082000442ULL,
+    0x29140100400003ULL,
+    0x204042002404000ULL,
+    0x910901008580002ULL,
+    0x22080a410400200ULL,
+    0x159010500e00400ULL,
+    0xa0620020a0204ULL,
+    0x80184040040ULL,
+    0x10081807002403ULL,
+    0x1080841000410ULL,
+    0x40640c20088430ULL,
+    0x205300a09c0ULL,
+    0x409004422084051ULL,
+    0x40000440a080620ULL,
+    0x88000c10241840ULL,
+    0x57020084208c404ULL,
+    0x2802040044000aULL,
+    0x80802012080a089ULL,
+    0x20801c04a04800ULL,
+    0x203009020a01000ULL,
+    0x410c04404046400ULL,
+    0x20a10045080800ULL,
+    0x4060a40580810ULL,
+    0x8205102240924ULL,
+    0x8081204002026ULL,
+    0x100400224010a0ULL,
+    0x900808010082000ULL,
+    0x10028201004100ULL,
+    0x202042104888804ULL,
+    0x41410002010100ULL,
+    0x10122210080815ULL,
+    0x98141030120a06ULL,
+    0x400202804040802ULL,
+    0x8020100400400c0ULL,
+    0x400100c4830040ULL,
+    0x42008c080a0208ULL,
+    0x250008a18098226ULL,
+    0x42020220084c0aULL,
+    0x903008821010ULL,
+    0xa6011008401200ULL,
+    0x209004022081000ULL,
+    0x800014202288800ULL,
+    0x201080904040040ULL,
+    0x920200420601040ULL,
+    0x6100408802101ULL,
+    0xa28020042048040ULL,
+    0x600841022100080ULL,
+    0x104420844120838ULL,
+    0x4444100100ULL,
+    0x4a0209084044100ULL,
+    0x688a00420820210ULL,
+    0x20840c08020300ULL,
+    0x1b0224204040084ULL,
+    0x41418008c038200ULL,
+    0x40540424040400ULL,
+    0x200008228010401ULL,
+    0x100809000ULL,
+    0x2000109048800ULL,
+    0x2508001d0220200ULL,
+    0x890841002302100ULL,
+    0x180280208180100ULL,
+    0x62380814840140ULL,
+};
+
+const Bitboard myRookMagics[64] = {
+    0x980001880204000ULL,
+    0x40001001200048ULL,
+    0x80081000200080ULL,
+    0x80100080040800ULL,
+    0x200102084120008ULL,
+    0x100050004008802ULL,
+    0x80008002000100ULL,
+    0x200011080420124ULL,
+    0x10800120804000ULL,
+    0xc1002080401100ULL,
+    0x801003220014100ULL,
+    0x200420010a108ULL,
+    0x250800800040082ULL,
+    0xa002408020050ULL,
+    0x420004010a0008ULL,
+    0x820800500014180ULL,
+    0x240008000244482ULL,
+    0x1202002100c480ULL,
+    0x220200104080a0ULL,
+    0xa0012000a002042ULL,
+    0x901001008003dULL,
+    0x440818002000c00ULL,
+    0x30004000110c822ULL,
+    0x4060000708104ULL,
+    0x183812480024000ULL,
+    0x100c00080200081ULL,
+    0x200200300410010ULL,
+    0x430040040400800ULL,
+    0x18001880040081ULL,
+    0x2000a00100804ULL,
+    0x4c011c00108802ULL,
+    0x25200040083ULL,
+    0x82a9040008000a1ULL,
+    0xc00600081804000ULL,
+    0x86000a301004010ULL,
+    0x189802800805000ULL,
+    0x88001400800881ULL,
+    0x201000401000218ULL,
+    0x2004182000804ULL,
+    0x84102000884ULL,
+    0x22400188218000ULL,
+    0x200201000404000ULL,
+    0x102005010040ULL,
+    0x800610010050009ULL,
+    0x12002008120004ULL,
+    0x2600100802000cULL,
+    0x820100302840008ULL,
+    0x202900904a0004ULL,
+    0x4400820800080ULL,
+    0x824400080200080ULL,
+    0x14401020010500ULL,
+    0x30012800440040ULL,
+    0x880180040080ULL,
+    0x2000c91081200ULL,
+    0x60080902100400ULL,
+    0xc401890200ULL,
+    0x1020c10c908001ULL,
+    0x61004000801429ULL,
+    0x230082003004011ULL,
+    0x5000900204d5001ULL,
+    0x40a001420304802ULL,
+    0x40500480a440003ULL,
+    0x9008050604ULL,
+    0x400028409006842ULL,
 };
 
 void init_attacks(){
@@ -136,7 +271,7 @@ void init_attacks(){
                 if(GetBit(blockers, cursq)) break;
             }
             
-            int magic_index = (rookMagic[sq]*blockers) >> rookShifts[sq];
+            int magic_index = (myRookMagics[sq]*blockers) >> rookShifts[sq];
             RookAttacks[rookOffsets[sq] + magic_index] = attacks;
         }
     }
@@ -161,7 +296,7 @@ void init_attacks(){
                 SetBit(attacks,cursq);
                 if(GetBit(blockers, cursq)) break;
             }
-            for(int r = rank - 1, f = file + 1; r>=0 && f<7; r--, f++){ // down right
+            for(int r = rank - 1, f = file + 1; r>=0 && f<=7; r--, f++){ // down right
                 int cursq = r*8+f;
                 SetBit(attacks,cursq);
                 if(GetBit(blockers, cursq)) break;
@@ -177,8 +312,98 @@ void init_attacks(){
                 if(GetBit(blockers, cursq)) break;
             }
             
-            int magic_index = (bishopMagic[sq]*blockers) >> bishopShifts[sq];
+            int magic_index = (myBishopMagics[sq]*blockers) >> bishopShifts[sq];
+
+            // --- ADD THIS COLLISION CHECK --- TEMP TODO REMOVE
+            if (BishopAttacks[bishopOffsets[sq] + magic_index] != 0ULL && 
+                BishopAttacks[bishopOffsets[sq] + magic_index] != attacks) {
+                std::cout << "CRITICAL ERROR: Magic Collision on square " << sq << "!\n";
+            }
+            // --------------------------------
+
             BishopAttacks[bishopOffsets[sq] + magic_index] = attacks;
         }
     }
+
+    // TODO REMOVE THIS:
+    // TEMPORARY BOOTSTRAP SCRIPT (Paste at the bottom of init_attacks)
+    // Include <random> at the top of your file to use this!
+    /*
+    std::cout << "\nconst Bitboard myBishopMagics[64] = {\n";
+    for (int sq = 0; sq < 64; sq++) {
+        Bitboard mask = bishopMasks[sq];
+        int bits = popcount(mask);
+        int num_variations = 1 << bits;
+        
+        Bitboard magic;
+        bool found = false;
+        while (!found) {
+            // Generate a random number with very few active bits (best for magics)
+            magic = ((Bitboard)rand() | ((Bitboard)rand() << 15) | ((Bitboard)rand() << 30) | ((Bitboard)rand() << 45)) &
+                    ((Bitboard)rand() | ((Bitboard)rand() << 15) | ((Bitboard)rand() << 30) | ((Bitboard)rand() << 45)) &
+                    ((Bitboard)rand() | ((Bitboard)rand() << 15) | ((Bitboard)rand() << 30) | ((Bitboard)rand() << 45));
+
+            std::vector<Bitboard> used(num_variations, 0ULL);
+            bool collision = false;
+            
+            for (int c = 0; c < num_variations; c++) {
+                Bitboard blockers = set_blockers(c, bits, mask);
+                // Recompute the correct attacks for this blocker
+                Bitboard attacks = 0ULL;
+                int file = sq % 8, rank = sq / 8;
+                for(int r = rank + 1, f = file + 1; r<=7 && f<=7; r++, f++) { int s = r*8+f; SetBit(attacks, s); if(GetBit(blockers, s)) break; }
+                for(int r = rank - 1, f = file + 1; r>=0 && f<=7; r--, f++) { int s = r*8+f; SetBit(attacks, s); if(GetBit(blockers, s)) break; }
+                for(int r = rank + 1, f = file - 1; r<=7 && f>=0; r++, f--) { int s = r*8+f; SetBit(attacks, s); if(GetBit(blockers, s)) break; }
+                for(int r = rank - 1, f = file - 1; r>=0 && f>=0; r--, f--) { int s = r*8+f; SetBit(attacks, s); if(GetBit(blockers, s)) break; }
+
+                int index = (magic * blockers) >> (64 - bits);
+                if (used[index] == 0ULL) { used[index] = attacks; } 
+                else if (used[index] != attacks) { collision = true; break; }
+            }
+            if (!collision) {
+                std::cout << "    0x" << std::hex << magic << "ULL,\n";
+                found = true;
+            }
+        }
+    }
+    std::cout << "};\n";
+
+    // --- ROOK BOOTSTRAP SCRIPT (Paste at bottom of init_attacks) ---
+    std::cout << "\nconst Bitboard myRookMagics[64] = {\n";
+    for (int sq = 0; sq < 64; sq++) {
+        Bitboard mask = rookMasks[sq];
+        int bits = popcount(mask);
+        int num_variations = 1 << bits;
+        
+        Bitboard magic;
+        bool found = false;
+        while (!found) {
+            magic = ((Bitboard)rand() | ((Bitboard)rand() << 15) | ((Bitboard)rand() << 30) | ((Bitboard)rand() << 45)) &
+                    ((Bitboard)rand() | ((Bitboard)rand() << 15) | ((Bitboard)rand() << 30) | ((Bitboard)rand() << 45)) &
+                    ((Bitboard)rand() | ((Bitboard)rand() << 15) | ((Bitboard)rand() << 30) | ((Bitboard)rand() << 45));
+
+            std::vector<Bitboard> used(num_variations, 0ULL);
+            bool collision = false;
+            
+            for (int c = 0; c < num_variations; c++) {
+                Bitboard blockers = set_blockers(c, bits, mask);
+                Bitboard attacks = 0ULL;
+                int file = sq % 8, rank = sq / 8;
+                for(int r = rank + 1; r < 8; r++) { int s = r*8+file; SetBit(attacks, s); if(GetBit(blockers, s)) break; }
+                for(int r = rank - 1; r >= 0; r--) { int s = r*8+file; SetBit(attacks, s); if(GetBit(blockers, s)) break; }
+                for(int f = file + 1; f < 8; f++) { int s = rank*8+f; SetBit(attacks, s); if(GetBit(blockers, s)) break; }
+                for(int f = file - 1; f >= 0; f--) { int s = rank*8+f; SetBit(attacks, s); if(GetBit(blockers, s)) break; }
+
+                int index = (magic * blockers) >> (64 - bits);
+                if (used[index] == 0ULL) { used[index] = attacks; } 
+                else if (used[index] != attacks) { collision = true; break; }
+            }
+            if (!collision) {
+                std::cout << "    0x" << std::hex << magic << "ULL,\n";
+                found = true;
+            }
+        }
+    }
+    std::cout << "};\n";
+    */
 }

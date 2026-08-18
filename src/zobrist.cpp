@@ -1,6 +1,11 @@
 #include "zobrist.h"
 #include <random>
 
+Bitboard zobrist_pieces[2][6][64];
+Bitboard zobrist_side;
+Bitboard zobrist_castling[16];
+Bitboard zobrist_ep[65];
+
 void zobrist_init(){
     std::mt19937_64 rng(1070372ULL); // number stockfish also uses ^^
     

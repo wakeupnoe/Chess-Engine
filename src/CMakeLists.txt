@@ -4,6 +4,7 @@ add_library(EngineLib STATIC
     board.cpp
     movegen.cpp
     zobrist.cpp
+    AIPerft.cpp
 )
 
 target_include_directories(EngineLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

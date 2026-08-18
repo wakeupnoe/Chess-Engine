@@ -30,7 +30,7 @@ public:
     inline Bitboard get_pieces(Color c, Piece p) const { return pieces[c][p]; }
     inline Bitboard get_color_pieces(Color c) const { return colorPieces[c]; }
     inline Bitboard get_all_pieces() const { return allPieces; }
-    inline void move_piece(Color c, Piece p, Square from_sq, Square to_sq) {
+    inline void move_piece(Color c, Piece p, int from_sq, int to_sq) {
         Bitboard move_mask = SquareBB(from_sq) | SquareBB(to_sq);
         pieces[c][p] ^= move_mask;
         colorPieces[c] ^= move_mask;
@@ -39,7 +39,7 @@ public:
         pieceOnSquare[from_sq] = NO_PIECE_TYPE;
         currentState.Zobrist_Key ^= zobrist_pieces[c][p][from_sq] ^ zobrist_pieces[c][p][to_sq];
     }
-    inline void quiet_move_piece(Color c, Piece p, Square from_sq, Square to_sq) {
+    inline void quiet_move_piece(Color c, Piece p, int from_sq, int to_sq) {
         Bitboard move_mask = SquareBB(from_sq) | SquareBB(to_sq);
         pieces[c][p] ^= move_mask;
         colorPieces[c] ^= move_mask;
@@ -47,23 +47,23 @@ public:
         pieceOnSquare[to_sq] = p; 
         pieceOnSquare[from_sq] = NO_PIECE_TYPE;
     }
-    inline void toggle_piece(Color c, Piece p, Square sq) {
+    inline void toggle_piece(Color c, Piece p, int sq) {
         Bitboard bb = SquareBB(sq);
         pieces[c][p] ^= bb;
         colorPieces[c] ^= bb;
         allPieces ^= bb;
         currentState.Zobrist_Key ^= zobrist_pieces[c][p][sq];
     }
-    inline void quiet_toggle_piece(Color c, Piece p, Square sq) {
+    inline void quiet_toggle_piece(Color c, Piece p, int sq) {
         Bitboard bb = SquareBB(sq);
         pieces[c][p] ^= bb;
         colorPieces[c] ^= bb;
         allPieces ^= bb;
     }
-    inline void add_piece(Color c, Piece p, Square sq){ toggle_piece(c,p,sq); pieceOnSquare[sq] = p; }
-    inline void quiet_add_piece(Color c, Piece p, Square sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = p; }
-    inline void remove_piece(Color c, Piece p, Square sq){ toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
-    inline void quiet_remove_piece(Color c, Piece p, Square sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
+    inline void add_piece(Color c, Piece p, int sq){ toggle_piece(c,p,sq); pieceOnSquare[sq] = p; }
+    inline void quiet_add_piece(Color c, Piece p, int sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = p; }
+    inline void remove_piece(Color c, Piece p, int sq){ toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
+    inline void quiet_remove_piece(Color c, Piece p, int sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
 
     inline Color get_side_to_move() const { return sideToMove; }
     inline Bitboard get_en_passant_Bitboard() const { return SquareBB(currentState.En_Passant_Target_Square); }
@@ -108,7 +108,7 @@ bool Board::make_move(Move move){
             remove_piece(Them,PAWN,enemy_pawn_sq);
             currentState.Captured_Piece_Type = PAWN;
         } else if(flag == 1){ // double push
-            currentState.En_Passant_Target_Square = to_sq + (Us == WHITE ? -8 : 8);
+            currentState.En_Passant_Target_Square = static_cast<Square>(to_sq + (Us == WHITE ? -8 : 8));
             currentState.Zobrist_Key ^= zobrist_ep[currentState.En_Passant_Target_Square]; // square indexable
         } else if(flag == 2){ // KING SIDE
             Square from_rook = Us == WHITE ? H1 : H8;
@@ -128,7 +128,7 @@ bool Board::make_move(Move move){
     Board::sideToMove = Them;
 
     // Phase 7: Legality Check
-    int king_sq = lsb(get_pieces(Us, KING));
+    Square king_sq = static_cast<Square>(lsb(get_pieces(Us, KING)));
     if(is_square_attacked<Them>(king_sq, *this)) {
         unmake_move<Us>(move);
         return false;

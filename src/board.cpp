@@ -8,11 +8,12 @@ namespace {
     void parse_piece_char(char c, Color& col, Piece& p){
         col = islower(c) ? BLACK : WHITE;
         switch (tolower(c)) {
-            case 'p' : p = PAWN;
-            case 'n' : p = KNIGHT;
-            case 'b' : p = BISHOP;
-            case 'k' : p = KING;
-            case 'q' : p = QUEEN;
+            case 'p' : p = PAWN; break;
+            case 'n' : p = KNIGHT; break;
+            case 'r' : p = ROOK; break;
+            case 'b' : p = BISHOP; break;
+            case 'k' : p = KING; break;
+            case 'q' : p = QUEEN; break;
         }
     }
 
