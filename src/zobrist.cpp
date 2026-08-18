@@ -11,5 +11,6 @@ void zobrist_init(){
     }
     zobrist_side = rng();
     for(int cs = 0; cs<16; cs++) zobrist_castling[cs] = rng();
-    for(int f = 0; f<8; f++) zobrist_ep[f] = rng();
+    for(int sq = 0; sq<64; sq++) zobrist_ep[sq] = rng();
+    zobrist_ep[64] = 0ULL; // NO_SQUARE target En_passant square should not alter state 
 }
