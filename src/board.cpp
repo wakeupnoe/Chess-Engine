@@ -20,7 +20,7 @@ namespace {
     void parseEnPassantSquare(std::string target, StateInfo& current){
         if(size(target)==2){
             int file = target[0] - 'a';
-            int rank = target[1] - '0';
+            int rank = target[1] - '1'; // fixed form '0' to '1'
             current.En_Passant_Target_Square = static_cast<Square>(rank*8+file);
         } else current.En_Passant_Target_Square = NO_SQUARE;
     }

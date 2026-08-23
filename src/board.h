@@ -66,7 +66,7 @@ public:
     inline void quiet_remove_piece(Color c, Piece p, int sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
 
     inline Color get_side_to_move() const { return sideToMove; }
-    inline Bitboard get_en_passant_Bitboard() const { return SquareBB(currentState.En_Passant_Target_Square); }
+    inline Bitboard get_en_passant_Bitboard() const { return currentState.En_Passant_Target_Square == NO_SQUARE ? 0ULL : SquareBB(currentState.En_Passant_Target_Square); }
     inline int get_castling_rights() const { return currentState.castling_rights; }
 };
 
@@ -111,10 +111,10 @@ bool Board::make_move(Move move){
             currentState.En_Passant_Target_Square = static_cast<Square>(to_sq + (Us == WHITE ? -8 : 8));
             currentState.Zobrist_Key ^= zobrist_ep[currentState.En_Passant_Target_Square]; // square indexable
         } else if(flag == 2){ // KING SIDE
-            Square from_rook = Us == WHITE ? H1 : H8;
+            Square from_rook = Us == WHITE ? H1 : H8;           // HERE
             Square to_rook = static_cast<Square>(from_rook - 2);
             move_piece(Us,ROOK,from_rook,to_rook);
-        } else if(flag == 3){ // QUEEN SIDE
+        } else if(flag == 3){ // QUEEN SIDE                     // AND HERE
             Square from_rook = Us == WHITE ? A1 : A8;
             Square to_rook = static_cast<Square>(from_rook + 3);
             move_piece(Us,ROOK,from_rook,to_rook);
