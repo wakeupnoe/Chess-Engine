@@ -5,13 +5,15 @@
 
 class MoveList {
     private:
-    Move moves[256];
     int count;
+    
     public:
+    Move moves[256]; // bad practice, but OOP ommited in favor of readability in search.h
+    int scores[256];
+    
     MoveList() : count(0) {}
     
-    inline void add(Move m) { moves[count++] = m; }
-    
+    inline void add(Move m) { moves[count] = m; scores[count++] = m; }
     inline int size() { return count; }
     inline Move get(int index) { return moves[index]; }
     inline const Move* begin() { return &moves[0]; }

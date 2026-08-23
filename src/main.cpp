@@ -35,16 +35,18 @@ int main(){
     //std::cout << "Finished running e3 bug Test" << std::endl;
     
     Color col = WHITE;
-    int depth = 5;
-
-    while(true){
+    int depth = 6;
+    bool condition = true;
+    while(condition == true){
         if(col == WHITE){
             Move m = get_best_move<WHITE>(board, depth);
+            if(m==0) condition = false;
             std::cout << move_to_string(board,m) << std::endl;
             board.make_move<WHITE>(m);
             col = BLACK;
         } else {
             Move m = get_best_move<BLACK>(board, depth);
+            if(m==0) condition = false;
             std::cout << move_to_string(board,m) << std::endl;
             board.make_move<BLACK>(m);
             col = WHITE;

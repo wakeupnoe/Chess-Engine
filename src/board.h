@@ -68,6 +68,15 @@ public:
     inline Color get_side_to_move() const { return sideToMove; }
     inline Bitboard get_en_passant_Bitboard() const { return currentState.En_Passant_Target_Square == NO_SQUARE ? 0ULL : SquareBB(currentState.En_Passant_Target_Square); }
     inline int get_castling_rights() const { return currentState.castling_rights; }
+    inline int get_game_ply() const {return gamePly; }
+    inline bool is_draw(){
+        if(currentState.Half_move_Clock >= 100) return true;
+        int limit = gamePly - currentState.Half_move_Clock;
+        for(int i = gamePly - 2; i>=limit; i-=2){
+            if(HistoryStack[i].Zobrist_Key == currentState.Zobrist_Key) return true;
+        }
+        return false;
+    }
 };
 
 
