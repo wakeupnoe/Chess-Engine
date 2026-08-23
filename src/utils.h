@@ -1,6 +1,6 @@
 #pragma once
 #include "types.h"
-#include <String>
+#include <string>
 
 inline std::string move_to_string(Board& board, Move m){
     std::string res = "";
