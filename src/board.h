@@ -69,6 +69,7 @@ public:
     inline Bitboard get_en_passant_Bitboard() const { return currentState.En_Passant_Target_Square == NO_SQUARE ? 0ULL : SquareBB(currentState.En_Passant_Target_Square); }
     inline int get_castling_rights() const { return currentState.castling_rights; }
     inline int get_game_ply() const {return gamePly; }
+    inline uint64_t get_zobrist_key() const { return currentState.Zobrist_Key; }
     inline bool is_draw(){
         if(currentState.Half_move_Clock >= 100) return true;
         int limit = gamePly - currentState.Half_move_Clock;

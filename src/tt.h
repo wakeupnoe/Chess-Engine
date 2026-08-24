@@ -2,6 +2,19 @@
 #include "types.h"
 
 
+inline int score_to_tt(int16_t score, int ply){
+    if(score >=   MATE_SCORE - 100) return score + ply;
+    if(score <= - MATE_SCORE + 100) return score - ply;
+    return score;
+}
+
+inline int16_t score_from_tt(int score, int ply){
+    if(score >=   MATE_SCORE - 100) return score - ply;
+    if(score <= - MATE_SCORE + 100) return score + ply;
+    return score;
+}
+
+
 class TranspositionTable{
 private:
 TTEntry* table = nullptr;
