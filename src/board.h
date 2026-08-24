@@ -64,7 +64,7 @@ public:
     inline void quiet_add_piece(Color c, Piece p, int sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = p; }
     inline void remove_piece(Color c, Piece p, int sq){ toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
     inline void quiet_remove_piece(Color c, Piece p, int sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
-    inline Piece get_piece_on_sq(int sq) { return pieceOnSquare[sq]; }
+    inline Piece get_piece_on_sq(int sq) const { return pieceOnSquare[sq]; }
     inline Color get_side_to_move() const { return sideToMove; }
     inline Bitboard get_en_passant_Bitboard() const { return currentState.En_Passant_Target_Square == NO_SQUARE ? 0ULL : SquareBB(currentState.En_Passant_Target_Square); }
     inline int get_castling_rights() const { return currentState.castling_rights; }
