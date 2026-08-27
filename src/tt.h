@@ -1,5 +1,7 @@
 #pragma once
 #include "types.h"
+#include <cstddef>
+
 
 
 inline int score_to_tt(int16_t score, int ply){

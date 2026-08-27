@@ -8,14 +8,20 @@ A competitive C++ Chess engine.
 - board class and make_move / unmake_move in board.h
 - attack generation for all pieces in attacks.h
 - Perft test setup (currently main runs perft tests)
+- Implement alpha beta search in search.h and basic heurisic evaluation
+- move ordering beginning
 
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
 
 ## Next steps
-- Implement alpha beta search in search.h and basic heurisic evaluation
-- move ordering, quincent search
-- NNUE evaluation
+[+] Quiescence search
+[-] history heuristic & Null pointer pruning
+[-] PVS & LMR
+[-] Aspiartion Windows & SEE
+[-] MovePicker state machine
+[-] NNUE integration
+[-] Automated tuning?
 
 ## Meta-Plan
 [ ] Set up automatic testing environment via GitHub-Actions

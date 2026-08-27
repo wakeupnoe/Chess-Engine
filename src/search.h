@@ -4,11 +4,16 @@
 #include "movegen.h"
 #include "evaluation.h"
 #include "tt.h"
+#include <cstring>
 #include <iostream>
 
 constexpr int MAX_PLY = 64; // upper bound of search depth
 constexpr int NUM_KILLERS = 2; // how many killermoves we store
 Move killer_moves[MAX_PLY][NUM_KILLERS];
+int history_heuristic[2][64][64];
+inline void clear_history_heuristic(){
+    std::memset(history_heuristic,0,sizeof(history_heuristic));
+}
 
 const int MVV_LVT[6][6] = { // AI Generated!
     // Attacker: P,   N,   B,   R,   Q,   K
@@ -74,9 +79,10 @@ void score_moves(MoveList& list, const Board& board, int ply, Move tt_move){
             }
             
             // 4. The History Heuristic (Score: 0 to ~800,000)
+            if(!is_killer){
+                score = history_heuristic[Us][from][to];
+            }
         }
-
-        
         
         // 5. Bad Captures (Score: Negative)
         
@@ -88,6 +94,7 @@ template <Color Us>
 Move get_best_move(Board& board, int target_depth){
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     Move best_move_overall = 0;
+    clear_history_heuristic();
 
     for(int current_depth = 1; current_depth <= target_depth; current_depth++){
         int max_score = -INFINITY_SCORE;
@@ -130,11 +137,81 @@ Move get_best_move(Board& board, int target_depth){
     return best_move_overall;
 }
 
+
+
+template <Color Us>
+int quiescence_search(Board& board, int alpha, int beta, int ply){
+    int standard_pat = evaluate<Us>(board);
+    if(standard_pat >= beta) return beta;
+    alpha = (alpha < standard_pat) ? standard_pat : alpha;
+    
+    int original_alpha = alpha;
+    
+    TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
+    Move tt_move = 0;
+    
+    if(tt_entry != nullptr){
+        tt_move = tt_entry->move;
+        int tt_score = score_from_tt(tt_entry->score, ply);
+        if(tt_entry->flag == TT_EXACT) return tt_score;
+        if(tt_entry->flag == TT_ALPHA && tt_score <= alpha) return tt_score;
+        if(tt_entry->flag == TT_BETA && tt_score >= beta) return tt_score;
+    }
+
+    constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
+
+    int max_score = standard_pat;
+    Move best_move = 0;
+    MoveList list = generate_moves<Us>(board);
+    score_moves<Us>(list, board, ply, tt_move);
+
+    for(int i = 0; i<list.size(); i++){
+        // lazy selection sort
+        int best_score_idx = i;
+        for(int j = i+1; j<list.size(); j++){
+            if(list.scores[j] > list.scores[best_score_idx]){
+                best_score_idx = j;
+            }
+        }
+
+        std::swap(list.moves[i],list.moves[best_score_idx]);
+        std::swap(list.scores[i],list.scores[best_score_idx]);
+
+        Move move = list.get(i);
+        int flag = get_flags(move);
+        bool is_quite = flag <= 3;
+        if(is_quite) continue;
+        
+        if(board.make_move<Us>(move)){
+            int score = -quiescence_search<Them>(board, -beta, -alpha, ply + 1);
+            board.unmake_move<Us>(move);
+
+            best_move = (score > max_score ? move : best_move);
+            max_score = std::max(score, max_score);
+            alpha = std::max(alpha, max_score);
+            if(beta <= max_score){
+                break; // beta cutoff
+            }
+        }
+    }
+
+    TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
+    TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), 0, flag, board.get_game_ply());
+    
+    return max_score;
+}
+
+
+
+
+
+
 template <Color Us>
 int search(Board& board, int depth, int alpha, int beta, int ply){
     if(board.is_draw()) return 0; // "ply > 0 &&" important if we remove root search function
     
     int original_alpha = alpha;
+    constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     
     TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
     Move tt_move = 0;
@@ -151,12 +228,32 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         }
     }
 
+    // Null-Move Pruning
+    int kingSq = lsb(board.get_pieces(Us,KING));
+    bool in_check = is_square_attacked<Them>(static_cast<Square>(kingSq), board);
+
+    constexpr int R = 2; // Depth reduction if we are safe?
+
+    if(!in_check && depth >= 3 && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
+        board.make_null_move<Us>();
+
+        int null_score = -search<Them>(board, depth - 1 - R, -beta, -beta + 1, ply + 1);
+        board.unmake_null_move<Us>();
+        if(null_score >= beta){
+            return beta;
+        }
+    }
+
+
+
+
+
+
     if(depth == 0){
-        return evaluate<Us>(board); // in evaluation.h
+        return quiescence_search<Us>(board, alpha, beta, ply);
     }
             
 
-    constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     int max_score = -INFINITY_SCORE;
     int legal_moves = 0;
     Move best_move = 0;
@@ -189,6 +286,7 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
                 bool is_quite = flag <= 3;
 
                 if(is_quite){
+                    // killer moves
                     bool duplicate = false;
                     for(int k = 0; k<NUM_KILLERS; k++){
                         if(killer_moves[ply][k] == move){
@@ -196,13 +294,17 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
                             break;
                         }
                     }
-
                     if(!duplicate){
                         for(int k = NUM_KILLERS - 1; k>0; k--){
                             killer_moves[ply][k] = killer_moves[ply][k-1];
                         }
                         killer_moves[ply][0] = move;
                     }
+
+                    // history heuristic
+                    int from = get_from_sq(move);
+                    int to = get_to_sq(move);
+                    history_heuristic[Us][from][to] += depth*depth;
                 }
 
                 break; // beta cutoff

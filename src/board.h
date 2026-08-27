@@ -26,6 +26,10 @@ public:
     bool make_move(Move move);
     template <Color Us>
     void unmake_move(Move move);
+    template <Color Us>
+    void make_null_move();
+    template <Color Us>
+    void unmake_null_move();
 
     inline Bitboard get_pieces(Color c, Piece p) const { return pieces[c][p]; }
     inline Bitboard get_color_pieces(Color c) const { return colorPieces[c]; }
@@ -79,6 +83,26 @@ public:
         return false;
     }
 };
+
+
+template <Color Us> // Color of the side that makes the move
+void Board::make_null_move(){
+    constexpr Color Them = Us == WHITE ? BLACK : WHITE;
+    HistoryStack[gamePly++] = currentState;
+    currentState.Half_move_Clock++;
+    currentState.Zobrist_Key ^= zobrist_ep[currentState.En_Passant_Target_Square];
+    currentState.En_Passant_Target_Square = NO_SQUARE;
+    currentState.Zobrist_Key ^= zobrist_side;
+    sideToMove = Them;
+}
+
+template <Color Us> // Color of the side that makes the move
+void Board::unmake_null_move(){
+    constexpr Color Them = Us == WHITE ? BLACK : WHITE;
+    currentState = HistoryStack[--gamePly];
+    sideToMove = Us;
+}
+
 
 
 template <Color Us> // Color of the side that makes the move
