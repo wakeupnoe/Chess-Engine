@@ -6,11 +6,19 @@
 #include "tt.h"
 #include <cstring>
 #include <iostream>
+#include <chrono>
 
 constexpr int MAX_PLY = 64; // upper bound of search depth
 constexpr int NUM_KILLERS = 2; // how many killermoves we store
-Move killer_moves[MAX_PLY][NUM_KILLERS];
-int history_heuristic[2][64][64];
+
+// Global
+extern int LMR_table[64][64];
+void init_lmr_table();
+
+inline uint64_t nodes_searched = 0;
+inline Move killer_moves[MAX_PLY][NUM_KILLERS];
+inline int history_heuristic[2][64][64];
+
 inline void clear_history_heuristic(){
     std::memset(history_heuristic,0,sizeof(history_heuristic));
 }
@@ -95,6 +103,9 @@ Move get_best_move(Board& board, int target_depth){
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     Move best_move_overall = 0;
     clear_history_heuristic();
+    nodes_searched = 0;
+
+    auto start_time = std::chrono::steady_clock::now();
 
     for(int current_depth = 1; current_depth <= target_depth; current_depth++){
         std::cout << "DEBUG searching at depth " << current_depth << std::endl; 
@@ -146,6 +157,28 @@ Move get_best_move(Board& board, int target_depth){
             }
         }
         best_move_overall = current_best_move;
+
+        // UCI metrics:
+        auto current_time = std::chrono::steady_clock::now();
+        std::chrono::duration<double> elapsed = current_time - start_time;
+        double seconds = elapsed.count();
+
+        uint64_t nps = (seconds > 0.0001) ? static_cast<uint64_t>(nodes_searched / seconds) : 0;
+        int time_ms = static_cast<int>(seconds * 1000);
+        int hashfull = TT.get_hashfull();
+
+        // UCI type output
+        std::cout << "info depth " << current_depth
+                << " score cp " << max_score
+                << " nodes " << nodes_searched
+                << " nps " << nps
+                << " hashfull " << hashfull
+                << " time " << time_ms
+                << " pv "
+                << std::endl;
+
+
+
         if(max_score > MATE_SCORE - 100){
             break; // forced mate detected
         }
@@ -157,6 +190,7 @@ Move get_best_move(Board& board, int target_depth){
 
 template <Color Us>
 int quiescence_search(Board& board, int alpha, int beta, int ply){
+    nodes_searched++;
     int standard_pat = evaluate<Us>(board);
     if(standard_pat >= beta) return beta;
     alpha = (alpha < standard_pat) ? standard_pat : alpha;
@@ -224,6 +258,7 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
 
 template <Color Us>
 int search(Board& board, int depth, int alpha, int beta, int ply){
+    nodes_searched++;
     if(board.is_draw()) return 0; // "ply > 0 &&" important if we remove root search function
     
     int original_alpha = alpha;
@@ -246,33 +281,33 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     // Null-Move Pruning
     int kingSq = lsb(board.get_pieces(Us,KING));
     bool in_check = is_square_attacked<Them>(static_cast<Square>(kingSq), board);
-
+    int newdepth = in_check ? depth : depth - 1;
+    
     constexpr int R = 2; // Depth reduction if we are safe?
-
+    
     if(!in_check && depth >= 3 && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
         board.make_null_move<Us>();
-
-        int null_score = -search<Them>(board, depth - 1 - R, -beta, -beta + 1, ply + 1);
+        
+        int null_score = -search<Them>(board, newdepth - R, -beta, -beta + 1, ply + 1);
         board.unmake_null_move<Us>();
         if(null_score >= beta){
             return beta;
         }
     }
-
-
+    
+    
     if(depth == 0){
         return quiescence_search<Us>(board, alpha, beta, ply);
-    }
-            
-
+    }  
+    
     int max_score = -INFINITY_SCORE;
     int legal_moves = 0;
     Move best_move = 0;
     
     MoveList list = generate_moves<Us>(board);
-
+    
     score_moves<Us>(list, board, ply, tt_move);
-
+    
     for(int i = 0; i<list.size(); i++){
         // lazy selection sort
         int best_score_idx = i;
@@ -281,23 +316,29 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
                 best_score_idx = j;
             }
         }
-
+        
         std::swap(list.moves[i],list.moves[best_score_idx]);
         std::swap(list.scores[i],list.scores[best_score_idx]);
-
+        
         Move move = list.get(i);
+        bool is_quiet = get_flags(move) <= 3;
         if(board.make_move<Us>(move)){
             legal_moves++;
             int score;
-
             if(legal_moves == 1){
                 // PV move
-                score = -search<Them>(board, depth-1, -beta, -alpha, ply + 1);
+                score = -search<Them>(board, newdepth, -beta, -alpha, ply + 1);
             } else {
-                score = -search<Them>(board, depth-1, -alpha -1, -alpha, ply + 1);
+                int R = 0;
 
-                if(score > alpha && score < beta){
-                    score = -search<Them>(board, depth-1, -beta, -alpha, ply + 1);
+                if(!in_check && is_quiet){
+                    R = LMR_table[std::min(newdepth,63)][std::min(legal_moves,63)];
+                }
+
+                score = -search<Them>(board, newdepth - R, -alpha - 1, -alpha, ply + 1);
+
+                if(score > alpha && (R > 0 || score < beta)){
+                    score = -search<Them>(board, newdepth, -beta, -alpha, ply + 1);
                 }
             }
 
@@ -306,7 +347,6 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             max_score = std::max(score, max_score);
             if(beta <= max_score){
                 int flag = get_flags(move);
-                bool is_quiet = flag <= 3;
 
                 if(is_quiet){
                     // killer moves

@@ -23,11 +23,11 @@ TTEntry* table = nullptr;
 size_t num_entries = 0;
 
 public:
-TranspositionTable() = default;
-~TranspositionTable() { delete[] table; }
+    TranspositionTable() = default;
+    ~TranspositionTable() { delete[] table; }
 
-void resize(size_t mb);
-void clear();
+    void resize(size_t mb);
+    void clear();
 
     inline TTEntry* probe(uint64_t key){
         TTEntry* entry = &table[key & (num_entries -1)];
@@ -45,7 +45,13 @@ void clear();
             cur->age = age;
         }
     }
-    
+    inline int get_hashfull() const {
+        int active_entries = 0;
+        for(int i = 0; i<1000; i++){
+            if(table[i].flag!=TT_NONE) active_entries++;
+        }
+        return active_entries;
+    }
 };
 
 extern TranspositionTable TT;

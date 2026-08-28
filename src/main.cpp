@@ -12,6 +12,8 @@ int main(){
     std::cout << "Starting Setup" << std::endl;
     init_attacks();
     zobrist_init();
+    init_lmr_table();
+    TT.resize(64);
     std::cout << "Setup done" << std::endl;
 
     Board board;
@@ -24,7 +26,6 @@ int main(){
     // board.load_fen("8/3P1Q2/3q2pk/5P1p/p6P/Pp6/1P1r4/KR6 b - - 0 47");
     board.load_fen("4r2k/1p3rbp/2p1N1pn/p3n3/P2NB3/1P4q1/4R1P1/B1Q2RK1 b - - 4 32"); // mate in 8
 
-    TT.resize(64);
 
     // int test_depth = 6;
     // std::cout << "Running Perft Divide at Depth" << test_depth << "..." << std::endl;
@@ -40,7 +41,7 @@ int main(){
     //std::cout << "Finished running e3 bug Test" << std::endl;
     
     Color col = BLACK;
-    int depth = 17;
+    int depth = 16;
     bool condition = true;
     while(condition == true){
         if(col == WHITE){
