@@ -97,16 +97,20 @@ Move get_best_move(Board& board, int target_depth){
     clear_history_heuristic();
 
     for(int current_depth = 1; current_depth <= target_depth; current_depth++){
+        std::cout << "DEBUG searching at depth " << current_depth << std::endl; 
+        
         int max_score = -INFINITY_SCORE;
         int alpha = -INFINITY_SCORE;
         int beta = INFINITY_SCORE;
         Move current_best_move = 0;
+        int legal_moves = 0;
         
         MoveList list = generate_moves<Us>(board);
         TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
         Move tt_move = tt_entry != nullptr ? tt_entry->move : 0;
         
         score_moves<Us>(list, board, 0, tt_move);
+
         for(int i = 0; i<list.size(); i++){
             // lazy selection sort
             int best_score_idx = i;
@@ -122,7 +126,16 @@ Move get_best_move(Board& board, int target_depth){
             Move move = list.get(i);
             
             if(board.make_move<Us>(move)){
-                int score = -search<Them>(board, current_depth-1, -beta, -alpha, 1);
+                legal_moves++;
+                int score;
+                if(legal_moves == 1){
+                    score = -search<Them>(board, current_depth-1, -beta, -alpha, 1);
+                } else {
+                    score = -search<Them>(board, current_depth-1, -alpha - 1, -alpha, 1);
+                    if(score > alpha && score < beta){
+                        score = -search<Them>(board, current_depth-1, -beta, -alpha, 1);
+                    }
+                }
                 board.unmake_move<Us>(move);
         
                 if(score > max_score || current_best_move == 0){
@@ -133,6 +146,9 @@ Move get_best_move(Board& board, int target_depth){
             }
         }
         best_move_overall = current_best_move;
+        if(max_score > MATE_SCORE - 100){
+            break; // forced mate detected
+        }
     }
     return best_move_overall;
 }
@@ -179,8 +195,8 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
 
         Move move = list.get(i);
         int flag = get_flags(move);
-        bool is_quite = flag <= 3;
-        if(is_quite) continue;
+        bool is_quiet = flag <= 3;
+        if(is_quiet) continue;
         
         if(board.make_move<Us>(move)){
             int score = -quiescence_search<Them>(board, -beta, -alpha, ply + 1);
@@ -218,9 +234,8 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     
     if(tt_entry != nullptr){
         tt_move = tt_entry->move;
-        if(tt_entry->depth >= depth){
-            int tt_score = score_from_tt(tt_entry->score, ply);
-
+        int tt_score = score_from_tt(tt_entry->score, ply);
+        if(tt_entry->depth >= depth || (std::abs(tt_score) > MATE_SCORE - 100)){
             //cutoff?
             if(tt_entry->flag == TT_EXACT) return tt_score;
             if(tt_entry->flag == TT_ALPHA && tt_score <= alpha) return tt_score;
@@ -243,10 +258,6 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             return beta;
         }
     }
-
-
-
-
 
 
     if(depth == 0){
@@ -277,15 +288,27 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         Move move = list.get(i);
         if(board.make_move<Us>(move)){
             legal_moves++;
-            int score = -search<Them>(board, depth-1, -beta, -alpha, ply + 1);
+            int score;
+
+            if(legal_moves == 1){
+                // PV move
+                score = -search<Them>(board, depth-1, -beta, -alpha, ply + 1);
+            } else {
+                score = -search<Them>(board, depth-1, -alpha -1, -alpha, ply + 1);
+
+                if(score > alpha && score < beta){
+                    score = -search<Them>(board, depth-1, -beta, -alpha, ply + 1);
+                }
+            }
+
             board.unmake_move<Us>(move);
             best_move = (score > max_score ? move : best_move);
             max_score = std::max(score, max_score);
             if(beta <= max_score){
                 int flag = get_flags(move);
-                bool is_quite = flag <= 3;
+                bool is_quiet = flag <= 3;
 
-                if(is_quite){
+                if(is_quiet){
                     // killer moves
                     bool duplicate = false;
                     for(int k = 0; k<NUM_KILLERS; k++){

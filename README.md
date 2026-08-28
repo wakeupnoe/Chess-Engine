@@ -16,7 +16,7 @@ A competitive C++ Chess engine.
 
 ## Next steps
 [+] Quiescence search
-[-] history heuristic & Null pointer pruning
+[+] history heuristic & Null pointer pruning
 [-] PVS & LMR
 [-] Aspiartion Windows & SEE
 [-] MovePicker state machine
