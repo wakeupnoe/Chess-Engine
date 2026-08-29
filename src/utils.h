@@ -1,5 +1,7 @@
 #pragma once
 #include "types.h"
+#include "board.h"
+
 #include <string>
 
 inline std::string move_to_string(Board& board, Move m){

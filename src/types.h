@@ -7,8 +7,8 @@ inline int get_from_sq(Move m) { return m & 0x3F; }
 inline int get_to_sq(Move m) { return (m>>6) & 0x3F; }
 inline int get_flags(Move m) { return m >> 12; }
 
-constexpr int INFINITY_SCORE = 999999;
-constexpr int MATE_SCORE = 900000;
+constexpr int INFINITY_SCORE = 32000;
+constexpr int MATE_SCORE = 30000;
 
 
 enum Color : uint8_t{WHITE,BLACK,NO_COLOR};

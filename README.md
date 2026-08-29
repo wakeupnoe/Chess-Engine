@@ -9,28 +9,29 @@ A competitive C++ Chess engine.
 - attack generation for all pieces in attacks.h
 - Perft test setup (currently main runs perft tests)
 - Implement alpha beta search in search.h and basic heurisic evaluation
-- move ordering beginning
-
+- move ordering done
+- Quiescence search
+- history heuristic & Null pointer pruning
+- PVS & LMR and Aspiartion Windows
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
+- Mate in 8 and 10 solved, not tested extensivly
+- 9M NPS in Play
 
 ## Next steps
-[+] Quiescence search
-[+] history heuristic & Null pointer pruning
-[-] PVS & LMR
-[-] Aspiartion Windows & SEE
+[-] SEE
 [-] MovePicker state machine
 [-] NNUE integration
-[-] Automated tuning?
+[-] Automated tuning of hyperparameters?
 
 ## Meta-Plan
 [ ] Set up automatic testing environment via GitHub-Actions
 [ ] Build the project modular and testable, so that bugs get 
 [ ] No AI-written code, only feedback and conceptual use of it
 Use of AI in:
-- all of tests/, in .github/workflows/ci.yml, and AIPerft.cpp/AIPerft.h, otherwise src is AI code free
+- all of tests/, in .github/workflows/ci.yml, in evaluation.h and AIPerft.cpp/AIPerft.h, otherwise src is AI code free
 
 ## Plan for the Engine
 - Highly optimized low level operations
-- Mini-Max Search up until a certain depth (with Alpha-Beta pruning, quincent search, move ordering later)
+- Mini-Max Search up until a certain depth (with Alpha-Beta pruning, quincent search, move ordering)
 - evaluation via hard coded heuristic (later via NNUE)

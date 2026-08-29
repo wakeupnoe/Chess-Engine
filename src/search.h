@@ -1,5 +1,6 @@
 #pragma once
 #include "types.h"
+#include "utils.h"
 #include "board.h"
 #include "movegen.h"
 #include "evaluation.h"
@@ -106,57 +107,82 @@ Move get_best_move(Board& board, int target_depth){
     nodes_searched = 0;
 
     auto start_time = std::chrono::steady_clock::now();
-
+    int prev_score = 0;
+    int king_sq = lsb(board.get_pieces(Us, KING));
+    bool in_check = is_square_attacked<Them>(static_cast<Square>(king_sq),board);
     for(int current_depth = 1; current_depth <= target_depth; current_depth++){
-        std::cout << "DEBUG searching at depth " << current_depth << std::endl; 
+        //std::cout << "DEBUG searching at depth " << current_depth << std::endl; 
+        int window_alpha = current_depth==1 ?  -INFINITY_SCORE : std::max(-INFINITY_SCORE, prev_score - 50);
+        int window_beta = current_depth==1 ?  INFINITY_SCORE : std::min(INFINITY_SCORE, prev_score + 50);
         
-        int max_score = -INFINITY_SCORE;
-        int alpha = -INFINITY_SCORE;
-        int beta = INFINITY_SCORE;
-        Move current_best_move = 0;
-        int legal_moves = 0;
-        
+        int root_newdepth = in_check ? current_depth : current_depth - 1;
+
         MoveList list = generate_moves<Us>(board);
         TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
         Move tt_move = tt_entry != nullptr ? tt_entry->move : 0;
-        
         score_moves<Us>(list, board, 0, tt_move);
 
-        for(int i = 0; i<list.size(); i++){
-            // lazy selection sort
-            int best_score_idx = i;
-            for(int j = i+1; j<list.size(); j++){
-                if(list.scores[j] > list.scores[best_score_idx]){
-                    best_score_idx = j;
-                }
-            }
 
-            std::swap(list.moves[i],list.moves[best_score_idx]);
-            std::swap(list.scores[i],list.scores[best_score_idx]);
+        Move current_best_move = 0;
 
-            Move move = list.get(i);
+        while(true){
+            int max_score = -INFINITY_SCORE + 1; // to avoid problems with infinite alpha researching
+            int legal_moves = 0;
+
+            int alpha = window_alpha;
+            int beta = window_beta;
             
-            if(board.make_move<Us>(move)){
-                legal_moves++;
-                int score;
-                if(legal_moves == 1){
-                    score = -search<Them>(board, current_depth-1, -beta, -alpha, 1);
-                } else {
-                    score = -search<Them>(board, current_depth-1, -alpha - 1, -alpha, 1);
-                    if(score > alpha && score < beta){
-                        score = -search<Them>(board, current_depth-1, -beta, -alpha, 1);
+            for(int i = 0; i<list.size(); i++){
+                // lazy selection sort
+                int best_score_idx = i;
+                for(int j = i+1; j<list.size(); j++){
+                    if(list.scores[j] > list.scores[best_score_idx]){
+                        best_score_idx = j;
                     }
                 }
-                board.unmake_move<Us>(move);
-        
-                if(score > max_score || current_best_move == 0){
-                    current_best_move = move;
-                    max_score = score;
+    
+                std::swap(list.moves[i],list.moves[best_score_idx]);
+                std::swap(list.scores[i],list.scores[best_score_idx]);
+    
+                Move move = list.get(i);
+                
+                if(board.make_move<Us>(move)){
+                    legal_moves++;
+                    int score;
+                    if(legal_moves == 1){
+                        score = -search<Them>(board, root_newdepth, -beta, -alpha, 1);
+                    } else {
+                        score = -search<Them>(board, root_newdepth, -alpha - 1, -alpha, 1);
+                        if(score > alpha && score < beta){
+                            score = -search<Them>(board, root_newdepth, -beta, -alpha, 1);
+                        }
+                    }
+                    board.unmake_move<Us>(move);
+            
+                    if(score > max_score || current_best_move == 0){
+                        current_best_move = move;
+                        max_score = score;
+                    }
+                    alpha = std::max(alpha, max_score);
                 }
-                alpha = std::max(alpha, max_score);
             }
+
+            if(max_score <= window_alpha){ // doing worse than expected
+                window_alpha = -INFINITY_SCORE;
+                continue;
+            }
+
+            if(max_score >= window_beta){ // doing better than expected
+                window_beta = INFINITY_SCORE;
+                continue;
+            }
+
+
+            prev_score = max_score;
+            best_move_overall = current_best_move;
+            break;
         }
-        best_move_overall = current_best_move;
+
 
         // UCI metrics:
         auto current_time = std::chrono::steady_clock::now();
@@ -168,21 +194,24 @@ Move get_best_move(Board& board, int target_depth){
         int hashfull = TT.get_hashfull();
 
         // UCI type output
+        /*
         std::cout << "info depth " << current_depth
-                << " score cp " << max_score
+                << " score cp " << prev_score
                 << " nodes " << nodes_searched
                 << " nps " << nps
                 << " hashfull " << hashfull
                 << " time " << time_ms
                 << " pv "
                 << std::endl;
+        */
+        //std::cout << " best_move " << move_to_string(board, current_best_move) << std::endl; // todo delete, not in the UCI 
 
 
-
-        if(max_score > MATE_SCORE - 100){
+        if(prev_score > MATE_SCORE - 100){
             break; // forced mate detected
         }
     }
+    std::cout << " best_move " << move_to_string(board, best_move_overall) << std::endl; // todo delete, not in the UCI 
     return best_move_overall;
 }
 
@@ -264,6 +293,10 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     int original_alpha = alpha;
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     
+    int kingSq = lsb(board.get_pieces(Us,KING));
+    bool in_check = is_square_attacked<Them>(static_cast<Square>(kingSq), board);
+    int newdepth = in_check ? depth : depth - 1;
+
     TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
     Move tt_move = 0;
     
@@ -277,14 +310,18 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             if(tt_entry->flag == TT_BETA && tt_score >= beta) return tt_score;
         }
     }
+    
+    // Internal Itterative Deepening
+    if (tt_move == 0 && depth >= 4 && !in_check){
+        search<Us>(board, depth - 2, alpha, beta, ply); // just to populate the TT table (with a shallow search)
+        tt_entry = TT.probe(board.get_zobrist_key());
+        if(tt_entry != nullptr) tt_move = tt_entry->move;
+    }
 
+    
+    
     // Null-Move Pruning
-    int kingSq = lsb(board.get_pieces(Us,KING));
-    bool in_check = is_square_attacked<Them>(static_cast<Square>(kingSq), board);
-    int newdepth = in_check ? depth : depth - 1;
-    
     constexpr int R = 2; // Depth reduction if we are safe?
-    
     if(!in_check && depth >= 3 && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
         board.make_null_move<Us>();
         
@@ -329,15 +366,24 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
                 // PV move
                 score = -search<Them>(board, newdepth, -beta, -alpha, ply + 1);
             } else {
-                int R = 0;
+                int R_LMR = 0;
 
                 if(!in_check && is_quiet){
-                    R = LMR_table[std::min(newdepth,63)][std::min(legal_moves,63)];
+                    R_LMR = LMR_table[std::min(newdepth,63)][std::min(legal_moves,63)];
+                    bool is_killer = false;
+                    for(int k = 0; k<NUM_KILLERS; k++){
+                        if(move == killer_moves[ply][k]){
+                            is_killer = true;
+                        }
+                    }
+                    if(is_killer){
+                        R_LMR = (R_LMR > 0) ? R_LMR - 1 : R_LMR;
+                    }
                 }
 
-                score = -search<Them>(board, newdepth - R, -alpha - 1, -alpha, ply + 1);
+                score = -search<Them>(board, newdepth - R_LMR , -alpha - 1, -alpha, ply + 1);
 
-                if(score > alpha && (R > 0 || score < beta)){
+                if(score > alpha && (R_LMR > 0 || score < beta)){
                     score = -search<Them>(board, newdepth, -beta, -alpha, ply + 1);
                 }
             }
