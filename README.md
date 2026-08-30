@@ -13,15 +13,24 @@ A competitive C++ Chess engine.
 - Quiescence search
 - history heuristic & Null pointer pruning
 - PVS & LMR and Aspiartion Windows
+
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
 - Mate in 8 and 10 solved, not tested extensivly
-- 9M NPS in Play
+- ~8M NPS in Play
 
 ## Next steps
-[-] SEE
+Phase 1
+[+] SEE
 [-] MovePicker state machine
+Phase 2
+[-] Futility Pruning (standard and reverse), late move pruning
+Phase 3
+[-] Singular Extensions
+[-] Enhanced History heuristic
+Phase 4
 [-] NNUE integration
+[-] Lazy SMP
 [-] Automated tuning of hyperparameters?
 
 ## Meta-Plan

@@ -21,6 +21,24 @@ extern Bitboard const myBishopMagics[64];
 extern Bitboard bishopOffsets[64];
 extern int bishopShifts[64];
 
+
+inline Bitboard get_king_attacks(Square sq, Bitboard allPieces){
+    return KingAttacks[sq] & allPieces;
+}
+
+inline Bitboard get_knight_attacks(Square sq, Bitboard allPieces){
+    return KnightAttacks[sq] & allPieces;
+}
+
+template <Color Us>
+inline Bitboard get_pawn_attacks(Square sq, Bitboard allPieces){ // single pawn attack (not like moving all at once like in movegen)
+    Bitboard raw_attacks = Us == WHITE ? (SquareBB(sq+9) & ~FILE_A) | (SquareBB(sq+7) & ~FILE_H) : (SquareBB(sq-9) & ~FILE_H) | (SquareBB(sq-7) & ~FILE_A);
+    return raw_attacks & allPieces;
+}
+
+
+
+
 inline Bitboard get_rook_attacks(Square sq, Bitboard allPieces){
     Bitboard blockers = allPieces & rookMasks[sq];
     int index = (myRookMagics[sq]*blockers) >> rookShifts[sq];

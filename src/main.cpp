@@ -30,7 +30,7 @@ int main(){
     // board.load_fen("2rn1rk1/p1q1p1p1/1p2b3/4N2Q/1n2N3/P2B4/1PP2PPP/R2K3R w - - 4 13");
     // Color col = WHITE;
 
-    board.load_fen("8/1pB1rnbk/6pn/7q/P3B2P/1P6/6P1/2Q1R2K b - - 0 34");
+    board.load_fen("8/1pB1rnbk/6pn/7q/P3B2P/1P6/6P1/2Q1R2K b - - 0 34"); // Mate in 10 - solved?
     Color col = BLACK;
     
     

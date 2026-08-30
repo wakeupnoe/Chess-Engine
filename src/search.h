@@ -4,6 +4,7 @@
 #include "board.h"
 #include "movegen.h"
 #include "evaluation.h"
+#include "see.h"
 #include "tt.h"
 #include <cstring>
 #include <iostream>
@@ -71,12 +72,12 @@ void score_moves(MoveList& list, const Board& board, int ply, Move tt_move){
         // 2. Good and Equal Captures & Queen Promotions (Score: 1,000,000 to 2,000,000)
         bool is_capture = flag == 4 || flag == 5 || flag >= 12;
         bool is_queen_promo = flag == 11;
-        if(is_capture || is_queen_promo){ // else if TODO
+        if(is_capture || is_queen_promo){
             Piece attacker = board.get_piece_on_sq(static_cast<Square>(from));
             Piece victim = board.get_piece_on_sq(static_cast<Square>(to));
             
             victim = (flag == 5 ? PAWN : victim);
-            score = FLAG_BONUS[flag] + MVV_LVT[victim][attacker];
+            score = (static_exchange_evaluation(board, move) >= 0 ? FLAG_BONUS[flag] : - FLAG_BONUS[flag])  + MVV_LVT[victim][attacker];
         } else {
             // 3. Killer Moves (Score: 900,000)
             bool is_killer = false;
@@ -126,7 +127,7 @@ Move get_best_move(Board& board, int target_depth){
         Move current_best_move = 0;
 
         while(true){
-            int max_score = -INFINITY_SCORE + 1; // to avoid problems with infinite alpha researching
+            int max_score = -INFINITY_SCORE;
             int legal_moves = 0;
 
             int alpha = window_alpha;
@@ -164,15 +165,18 @@ Move get_best_move(Board& board, int target_depth){
                         max_score = score;
                     }
                     alpha = std::max(alpha, max_score);
+                    if(alpha >=window_beta){
+                        break;
+                    }
                 }
             }
 
-            if(max_score <= window_alpha){ // doing worse than expected
+            if(max_score <= window_alpha && window_alpha > -INFINITY_SCORE){ // doing worse than expected
                 window_alpha = -INFINITY_SCORE;
                 continue;
             }
 
-            if(max_score >= window_beta){ // doing better than expected
+            if(max_score >= window_beta && window_beta < INFINITY_SCORE){ // doing better than expected
                 window_beta = INFINITY_SCORE;
                 continue;
             }
@@ -194,7 +198,7 @@ Move get_best_move(Board& board, int target_depth){
         int hashfull = TT.get_hashfull();
 
         // UCI type output
-        /*
+        /**/
         std::cout << "info depth " << current_depth
                 << " score cp " << prev_score
                 << " nodes " << nodes_searched
@@ -203,7 +207,7 @@ Move get_best_move(Board& board, int target_depth){
                 << " time " << time_ms
                 << " pv "
                 << std::endl;
-        */
+        /**/
         //std::cout << " best_move " << move_to_string(board, current_best_move) << std::endl; // todo delete, not in the UCI 
 
 
@@ -211,7 +215,6 @@ Move get_best_move(Board& board, int target_depth){
             break; // forced mate detected
         }
     }
-    std::cout << " best_move " << move_to_string(board, best_move_overall) << std::endl; // todo delete, not in the UCI 
     return best_move_overall;
 }
 
@@ -236,14 +239,14 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
         if(tt_entry->flag == TT_ALPHA && tt_score <= alpha) return tt_score;
         if(tt_entry->flag == TT_BETA && tt_score >= beta) return tt_score;
     }
-
+    
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
-
+    
     int max_score = standard_pat;
     Move best_move = 0;
     MoveList list = generate_moves<Us>(board);
     score_moves<Us>(list, board, ply, tt_move);
-
+    
     for(int i = 0; i<list.size(); i++){
         // lazy selection sort
         int best_score_idx = i;
@@ -252,14 +255,15 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
                 best_score_idx = j;
             }
         }
-
+        
         std::swap(list.moves[i],list.moves[best_score_idx]);
         std::swap(list.scores[i],list.scores[best_score_idx]);
-
+        
         Move move = list.get(i);
         int flag = get_flags(move);
         bool is_quiet = flag <= 3;
         if(is_quiet) continue;
+        if(static_exchange_evaluation(board,move) < 0) continue;
         
         if(board.make_move<Us>(move)){
             int score = -quiescence_search<Them>(board, -beta, -alpha, ply + 1);
@@ -333,7 +337,7 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     }
     
     
-    if(depth == 0){
+    if(depth <= 0){ // originally "==", but LMR might lead to negative depth
         return quiescence_search<Us>(board, alpha, beta, ply);
     }  
     
@@ -358,7 +362,11 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         std::swap(list.scores[i],list.scores[best_score_idx]);
         
         Move move = list.get(i);
-        bool is_quiet = get_flags(move) <= 3;
+        int flag = get_flags(move);
+        bool is_quiet = flag <= 3;
+        bool is_capture = flag == 4 || flag == 5 || flag >= 12;
+        int SME = 0;
+        if(is_capture) SME = static_exchange_evaluation(board, move);
         if(board.make_move<Us>(move)){
             legal_moves++;
             int score;
@@ -368,7 +376,7 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             } else {
                 int R_LMR = 0;
 
-                if(!in_check && is_quiet){
+                if(!in_check && (is_quiet || (is_capture && SME < 0))){
                     R_LMR = LMR_table[std::min(newdepth,63)][std::min(legal_moves,63)];
                     bool is_killer = false;
                     for(int k = 0; k<NUM_KILLERS; k++){

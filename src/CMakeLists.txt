@@ -6,6 +6,7 @@ add_library(EngineLib STATIC
     evaluation.cpp #AI
     movegen.cpp
     search.cpp
+    see.cpp
     tt.cpp
     zobrist.cpp
 )

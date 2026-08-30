@@ -8,7 +8,7 @@ class MoveList {
     int count;
     
     public:
-    Move moves[256]; // bad practice, but OOP ommited in favor of readability in search.h
+    Move moves[256]; // bad practice to make this public, but OOP ommited in favor of readability in search.h
     int scores[256];
     
     MoveList() : count(0) {}
