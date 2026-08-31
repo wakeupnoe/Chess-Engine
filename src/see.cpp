@@ -45,11 +45,16 @@ int static_exchange_evaluation(const Board& board, Move move){
     Piece victim = board.get_piece_on_sq(to);
 
     if(flag == 5) victim = PAWN; // en passant
-    if(flag >= 8) attacker = static_cast<Piece>(KNIGHT + (3 & flag)); // promotion
+    int promo_bonus = 0;
+    if(flag >= 8){
+        Piece promoted = static_cast<Piece>(KNIGHT + (3 & flag));
+        promo_bonus = PIECE_VALUES[promoted]-PIECE_VALUES[PAWN];
+        attacker = promoted; // promotion
+    }
 
     int gain[32];
     int d = 0;
-    gain[0] = PIECE_VALUES[victim];
+    gain[0] = PIECE_VALUES[victim] + promo_bonus;
 
     Bitboard occ = board.get_all_pieces();
     occ ^= SquareBB(from);

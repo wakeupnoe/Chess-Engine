@@ -6,12 +6,13 @@
 #include "evaluation.h"
 #include "see.h"
 #include "tt.h"
+#include "move_picker.h"
 #include <cstring>
 #include <iostream>
 #include <chrono>
 
-constexpr int MAX_PLY = 64; // upper bound of search depth
-constexpr int NUM_KILLERS = 2; // how many killermoves we store
+constexpr int MAX_PLY = 128; // was 64, extended for quiescence search; upper bound of search depth
+constexpr int NUM_KILLERS = 2; // how many killermoves we store (this should be 2 if otherwise, we need to update move_picker!)
 
 // Global
 extern int LMR_table[64][64];
@@ -25,7 +26,7 @@ inline void clear_history_heuristic(){
     std::memset(history_heuristic,0,sizeof(history_heuristic));
 }
 
-const int MVV_LVT[6][6] = { // AI Generated!
+/*const int MVV_LVT[6][6] = { // AI Generated!
     // Attacker: P,   N,   B,   R,   Q,   K
     { 15,  14,  13,  12,  11,  10 }, // Victim: Pawn (0)
     { 25,  24,  23,  22,  21,  20 }, // Victim: Knight (1)
@@ -33,9 +34,9 @@ const int MVV_LVT[6][6] = { // AI Generated!
     { 45,  44,  43,  42,  41,  40 }, // Victim: Rook (3)
     { 55,  54,  53,  52,  51,  50 }, // Victim: Queen (4)
     { 0,   0,   0,   0,   0,   0  }  // Victim: King (5) - Kings aren't captured
-};
+};*/
 
-const int FLAG_BONUS[16] = { // AI Generated!
+/*const int FLAG_BONUS[16] = { // AI Generated!
     0,         // 0: Quiet
     0,         // 1: Double Push
     0,         // 2: King Castle
@@ -51,9 +52,9 @@ const int FLAG_BONUS[16] = { // AI Generated!
     1'000'000, // 13: Promo B Cap
     1'000'000, // 14: Promo R Cap
     1'900'000  // 15: Promo Q Cap (Capture + Queen Promo!)
-};
+};*/
 
-template <Color Us>
+/*template <Color Us>
 void score_moves(MoveList& list, const Board& board, int ply, Move tt_move){
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     for(int i = 0; i<list.size(); i++){
@@ -98,7 +99,7 @@ void score_moves(MoveList& list, const Board& board, int ply, Move tt_move){
         
         list.scores[i] = score;
     }
-}
+}*/
 
 template <Color Us>
 Move get_best_move(Board& board, int target_depth){
@@ -118,22 +119,23 @@ Move get_best_move(Board& board, int target_depth){
         
         int root_newdepth = in_check ? current_depth : current_depth - 1;
 
-        MoveList list = generate_moves<Us>(board);
+        //MoveList list = generate_moves<Us>(board);
         TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
         Move tt_move = tt_entry != nullptr ? tt_entry->move : 0;
-        score_moves<Us>(list, board, 0, tt_move);
-
-
+        //score_moves<Us>(list, board, 0, tt_move);
         Move current_best_move = 0;
-
+        
         while(true){
             int max_score = -INFINITY_SCORE;
             int legal_moves = 0;
-
             int alpha = window_alpha;
             int beta = window_beta;
+
+            MovePicker<Us> picker(board, tt_move, killer_moves[0][0], killer_moves[0][1]);
+            Move move;
             
-            for(int i = 0; i<list.size(); i++){
+            while((move = picker.next_move()) != 0){
+            /*for(int i = 0; i<list.size(); i++){
                 // lazy selection sort
                 int best_score_idx = i;
                 for(int j = i+1; j<list.size(); j++){
@@ -146,7 +148,7 @@ Move get_best_move(Board& board, int target_depth){
                 std::swap(list.scores[i],list.scores[best_score_idx]);
     
                 Move move = list.get(i);
-                
+              */  
                 if(board.make_move<Us>(move)){
                     legal_moves++;
                     int score;
@@ -171,6 +173,12 @@ Move get_best_move(Board& board, int target_depth){
                 }
             }
 
+            if(legal_moves == 0){
+                if(in_check) prev_score = -MATE_SCORE;
+                else prev_score = 0;
+                break;
+            }
+
             if(max_score <= window_alpha && window_alpha > -INFINITY_SCORE){ // doing worse than expected
                 window_alpha = -INFINITY_SCORE;
                 continue;
@@ -186,6 +194,7 @@ Move get_best_move(Board& board, int target_depth){
             best_move_overall = current_best_move;
             break;
         }
+
 
 
         // UCI metrics:
@@ -223,9 +232,13 @@ Move get_best_move(Board& board, int target_depth){
 template <Color Us>
 int quiescence_search(Board& board, int alpha, int beta, int ply){
     nodes_searched++;
+    
     int standard_pat = evaluate<Us>(board);
+    if(ply >= MAX_PLY - 1) return standard_pat;
+
     if(standard_pat >= beta) return beta;
     alpha = (alpha < standard_pat) ? standard_pat : alpha;
+
     
     int original_alpha = alpha;
     
@@ -244,10 +257,13 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
     
     int max_score = standard_pat;
     Move best_move = 0;
-    MoveList list = generate_moves<Us>(board);
-    score_moves<Us>(list, board, ply, tt_move);
-    
-    for(int i = 0; i<list.size(); i++){
+    // MoveList list = generate_moves<Us>(board);
+    // score_moves<Us>(list, board, ply, tt_move);
+    MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1]);
+    Move move;
+    while((move = picker.next_move()) != 0){
+        if(picker.get_current_state() > GOOD_CAPTURES) break; // makes sense?
+    /*for(int i = 0; i<list.size(); i++){
         // lazy selection sort
         int best_score_idx = i;
         for(int j = i+1; j<list.size(); j++){
@@ -260,10 +276,11 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
         std::swap(list.scores[i],list.scores[best_score_idx]);
         
         Move move = list.get(i);
+    */
         int flag = get_flags(move);
         bool is_quiet = flag <= 3;
-        if(is_quiet) continue;
-        if(static_exchange_evaluation(board,move) < 0) continue;
+        if(is_quiet) continue; // we can use current_State in picker, right?
+        //if(static_exchange_evaluation(board,move) < 0) continue;
         
         if(board.make_move<Us>(move)){
             int score = -quiescence_search<Them>(board, -beta, -alpha, ply + 1);
@@ -293,6 +310,7 @@ template <Color Us>
 int search(Board& board, int depth, int alpha, int beta, int ply){
     nodes_searched++;
     if(board.is_draw()) return 0; // "ply > 0 &&" important if we remove root search function
+    if(ply >= MAX_PLY - 1) return evaluate<Us>(board);
     
     int original_alpha = alpha;
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
@@ -345,11 +363,13 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     int legal_moves = 0;
     Move best_move = 0;
     
-    MoveList list = generate_moves<Us>(board);
+    // MoveList list = generate_moves<Us>(board);
     
-    score_moves<Us>(list, board, ply, tt_move);
-    
-    for(int i = 0; i<list.size(); i++){
+    // score_moves<Us>(list, board, ply, tt_move);
+    MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1]);
+    Move move;
+    while((move = picker.next_move()) != 0){
+    /*for(int i = 0; i<list.size(); i++){
         // lazy selection sort
         int best_score_idx = i;
         for(int j = i+1; j<list.size(); j++){
@@ -362,11 +382,13 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         std::swap(list.scores[i],list.scores[best_score_idx]);
         
         Move move = list.get(i);
+        */
         int flag = get_flags(move);
         bool is_quiet = flag <= 3;
         bool is_capture = flag == 4 || flag == 5 || flag >= 12;
-        int SME = 0;
-        if(is_capture) SME = static_exchange_evaluation(board, move);
+        //int SME = 0;
+        //if(is_capture) SME = static_exchange_evaluation(board, move); // needed?
+        bool is_bad_capture = (picker.get_current_state() == BAD_CAPTURES);
         if(board.make_move<Us>(move)){
             legal_moves++;
             int score;
@@ -376,9 +398,11 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             } else {
                 int R_LMR = 0;
 
-                if(!in_check && (is_quiet || (is_capture && SME < 0))){
+                if(!in_check && (is_quiet || is_bad_capture)){
                     R_LMR = LMR_table[std::min(newdepth,63)][std::min(legal_moves,63)];
-                    bool is_killer = false;
+                    if(picker.get_current_state() == KILLERS) R_LMR = R_LMR > 0 ? R_LMR - 1 : R_LMR;
+
+                    /*bool is_killer = false;
                     for(int k = 0; k<NUM_KILLERS; k++){
                         if(move == killer_moves[ply][k]){
                             is_killer = true;
@@ -386,12 +410,16 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
                     }
                     if(is_killer){
                         R_LMR = (R_LMR > 0) ? R_LMR - 1 : R_LMR;
-                    }
+                    }*/
                 }
 
                 score = -search<Them>(board, newdepth - R_LMR , -alpha - 1, -alpha, ply + 1);
 
-                if(score > alpha && (R_LMR > 0 || score < beta)){
+                if(score > alpha && R_LMR > 0){
+                    score = -search<Them>(board, newdepth, -alpha -1, -alpha, ply + 1);
+                }
+
+                if(score > alpha && score < beta){
                     score = -search<Them>(board, newdepth, -beta, -alpha, ply + 1);
                 }
             }

@@ -115,6 +115,12 @@ bool Board::make_move(Move move){
     Piece pieceType = pieceOnSquare[from_sq];
     Piece capturedType = pieceOnSquare[to_sq];
     
+    if(capturedType == KING) return false; // performance problem?
+
+    if(pieceType == NO_PIECE_TYPE) return false; // performance problem?
+
+    if((get_pieces(Us,pieceType) & SquareBB(from_sq)) == 0) return false; // performance problem?
+
     // Phase 1: History Snapshot
     HistoryStack[gamePly++] = currentState;
     
@@ -124,7 +130,7 @@ bool Board::make_move(Move move){
     currentState.Captured_Piece_Type = capturedType;
     currentState.Zobrist_Key ^= zobrist_ep[currentState.En_Passant_Target_Square];
     currentState.En_Passant_Target_Square = NO_SQUARE;
-    
+
     // Phase 3: Base Piece Movement
     if(capturedType!=NO_PIECE_TYPE){
         remove_piece(Them,capturedType,to_sq);

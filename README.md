@@ -22,7 +22,7 @@ A competitive C++ Chess engine.
 ## Next steps
 Phase 1
 [+] SEE
-[-] MovePicker state machine
+[+] MovePicker state machine
 Phase 2
 [-] Futility Pruning (standard and reverse), late move pruning
 Phase 3

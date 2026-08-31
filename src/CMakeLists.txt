@@ -5,6 +5,7 @@ add_library(EngineLib STATIC
     board.cpp
     evaluation.cpp #AI
     movegen.cpp
+    move_picker.cpp
     search.cpp
     see.cpp
     tt.cpp

@@ -1,0 +1,206 @@
+#pragma once
+#include "types.h"
+#include "board.h"
+#include "movegen.h"
+#include "see.h"
+
+extern int history_heuristic[2][64][64];
+
+enum MovePickerState : uint8_t {
+    TT_MOVE, GENERATE_CAPTURES, GOOD_CAPTURES, KILLERS, GENERATE_QUIETS, QUIETS, BAD_CAPTURES
+};
+
+const int MVV_LVT[6][6] = { // AI Generated!
+    // Attacker: P,   N,   B,   R,   Q,   K
+    { 15,  14,  13,  12,  11,  10 }, // Victim: Pawn (0)
+    { 25,  24,  23,  22,  21,  20 }, // Victim: Knight (1)
+    { 35,  34,  33,  32,  31,  30 }, // Victim: Bishop (2)
+    { 45,  44,  43,  42,  41,  40 }, // Victim: Rook (3)
+    { 55,  54,  53,  52,  51,  50 }, // Victim: Queen (4)
+    { 0,   0,   0,   0,   0,   0  }  // Victim: King (5) - Kings aren't captured
+};
+
+const int FLAG_BONUS[16] = { // AI Generated!
+    0, 0, 0, 0,                // 0-3: Quiets, Double Push, Castles
+    1'000'000, 1'000'000,      // 4-5: Capture, EP Capture
+    0, 0,                      // 6-7: Unused
+    0, 0, 0, 900'000,          // 8-11: Promo N, B, R, Q (Quiet)
+    1'000'000, 1'000'000, 1'000'000, 1'900'000 // 12-15: Promo N, B, R, Q (Capture)
+};
+
+
+template <Color Us>
+class MovePicker{
+private:
+    MovePickerState current_state;
+    const Board& board;
+    Move tt_move;
+    Move killers[2];
+    int killer_index;
+
+    MoveList captures;
+    int captures_index;
+    MoveList quiets;
+    int quiets_index;
+
+
+    void score_captures(){
+        for(int i = 0; i<captures.size(); i++){
+            Move m = captures.get(i);
+            if(m == tt_move){
+                captures.scores[i] = -INFINITY; // very negative? (not _score which is 32k)
+                continue;
+            }
+
+            
+            int flag = get_flags(m);
+            int base_flag;
+            Piece attacker = board.get_piece_on_sq(static_cast<Square>(get_from_sq(m)));
+            Piece victim;
+            if(flag==5){
+                victim = PAWN; // En passant
+                base_flag = (static_exchange_evaluation(board, m) >= 0) ? FLAG_BONUS[flag] : -FLAG_BONUS[flag];
+            } else if(flag >= 8 && flag <= 11){
+                // quiet promotions, so victim pawn since we lose a pawn in the promotion?
+                victim = PAWN;
+                base_flag = FLAG_BONUS[flag];
+            } else {
+                victim = board.get_piece_on_sq(static_cast<Square>(get_to_sq(m)));
+                base_flag = (static_exchange_evaluation(board, m) >= 0) ? FLAG_BONUS[flag] : -FLAG_BONUS[flag];
+            }
+            captures.scores[i] =  base_flag + MVV_LVT[victim][attacker];
+        }
+    }
+    void score_quiets(){
+        for(int i = 0; i<quiets.size(); i++){
+            Move m = quiets.get(i);
+
+            if(m == tt_move || m == killers[0] || m == killers[1]){
+                quiets.scores[i] = -INFINITY;
+                continue;
+            }
+
+            int from = get_from_sq(m);
+            int to = get_to_sq(m);
+            quiets.scores[i] = history_heuristic[Us][from][to];
+        }
+    }
+
+public:
+    inline MovePickerState get_current_state(){ return current_state; }
+
+    MovePicker(const Board& b, Move tt, Move killer1, Move killer2)
+        : current_state(TT_MOVE), board(b), tt_move(tt), killer_index(0), captures_index(0), quiets_index(0) {
+        killers[0] = killer1;
+        killers[1] = killer2;
+    }
+
+    Move next_move(){
+        while(true){
+            switch (current_state) {
+            case TT_MOVE:{
+                current_state = GENERATE_CAPTURES;
+                if(is_pseudo_legal<Us>(board, tt_move)){
+                    return tt_move;
+                }
+                continue;
+            }
+            case GENERATE_CAPTURES: {
+                captures = generate_captures<Us>(board);
+                score_captures();
+                current_state = GOOD_CAPTURES;
+                continue;
+            }
+            case GOOD_CAPTURES: {
+                int best_score = - INFINITY;
+                int best_index = -1;
+                for(int i = captures_index; i<captures.size(); i++){
+                    if(captures.scores[i] > best_score){
+                        best_score = captures.scores[i];
+                        best_index = i;
+                    }
+                }
+
+                if(best_index == -1 || best_score < 0){
+                    current_state = KILLERS;
+                    continue;
+                }
+
+                std::swap(captures.moves[captures_index], captures.moves[best_index]);
+                std::swap(captures.scores[captures_index], captures.scores[best_index]);
+                Move move = captures.get(captures_index++);
+
+                //if(move == tt_move) continue;
+
+                return move;
+            }
+            case KILLERS: {
+                if(killer_index < 2){
+                    Move move = killers[killer_index++];
+                    if(move == 0 || move == tt_move) continue;
+                    if(!is_pseudo_legal<Us>(board,move)) continue;
+                    return move;
+                }
+                current_state = GENERATE_QUIETS;
+                continue;
+            }
+            case GENERATE_QUIETS: {
+                quiets = generate_quiets<Us>(board);
+                score_quiets();
+                current_state = QUIETS;
+                continue;
+            }
+            case QUIETS: {
+                int best_score = - INFINITY; // not _SCORE since that'd be 32k (too small)
+                int best_index = -1;
+                for(int i = quiets_index; i<quiets.size(); i++){
+                    if(quiets.scores[i] > best_score){
+                        best_score = quiets.scores[i];
+                        best_index = i;
+                    }
+                }
+
+                if(best_index == -1 || best_score == -INFINITY){
+                    current_state = BAD_CAPTURES;
+                    continue;
+                }
+
+                std::swap(quiets.moves[quiets_index], quiets.moves[best_index]);
+                std::swap(quiets.scores[quiets_index], quiets.scores[best_index]);
+
+                Move move = quiets.get(quiets_index++);
+
+                // if(move == killers[0] || move == killers[1] || move == tt_move) continue; // do not evaluate killers twice
+                // above is not needed, since we only select things above - INFINITY
+                return move;
+            }
+            case BAD_CAPTURES: {
+                int best_score = - INFINITY;
+                int best_index = -1;
+                for(int i = captures_index; i<captures.size(); i++){
+                    if(captures.scores[i] > best_score){
+                        best_score = captures.scores[i];
+                        best_index = i;
+                    }
+                }
+
+                if(best_index == -1){ // no more moves to generate
+                    return 0;
+                }
+
+                std::swap(captures.moves[captures_index], captures.moves[best_index]);
+                std::swap(captures.scores[captures_index], captures.scores[best_index]);
+
+                Move move = captures.get(captures_index++);
+
+                if(move == tt_move) continue;
+
+                return move;
+            }
+            default:
+                break;
+            }
+        }
+        return 0;
+    }
+};
