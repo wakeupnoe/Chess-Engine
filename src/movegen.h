@@ -121,10 +121,34 @@ bool is_pseudo_legal(const Board& board, Move move){
         case ROOK : return get_rook_attacks(static_cast<Square>(from),occ) & to_bb;
         case QUEEN : return get_queen_attacks(static_cast<Square>(from),occ) & to_bb;
         case KING : {
-            if(flag == 2 || flag == 3){
-                return (Us == WHITE) ? (to == G1 || to == C1) : (to == G8 || to == C8);
+            if(flag == 2 || flag == 3) {
+                // STRICT ORIGIN: King must start on its home square
+                if (from != (Us == WHITE ? E1 : E8)) return false;
+                
+                if(flag == 2){ // King Side
+                    if (!(board.get_castling_rights() & (Us == WHITE ? WK : BK))) return false;
+
+                    if(to != (Us == WHITE ? G1 : G8)) return false;
+                    Bitboard path = Us == WHITE ? (SquareBB(F1) | SquareBB(G1)) : (SquareBB(F8) | SquareBB(G8));
+                    if(occ & path) return false;
+                    // STRICT ROOK EXISTENCE
+                    Square rook_sq = Us == WHITE ? H1 : H8;
+                    if(board.get_piece_on_sq(rook_sq) != ROOK) return false;
+                    if(!(board.get_color_pieces(Us) & SquareBB(rook_sq))) return false;
+                    return true;
+                }
+                if(flag == 3){ // Queen Side
+                    if (!(board.get_castling_rights() & (Us == WHITE ? WQ : BQ))) return false;
+                    if(to != (Us == WHITE ? C1 : C8)) return false;
+                    Bitboard path = Us == WHITE ? (SquareBB(D1) | SquareBB(C1) | SquareBB(B1)) : (SquareBB(D8) | SquareBB(C8) | SquareBB(B8));
+                    if(occ & path) return false;
+                    // STRICT ROOK EXISTENCE
+                    Square rook_sq = Us == WHITE ? A1 : A8;
+                    if(board.get_piece_on_sq(rook_sq) != ROOK) return false;
+                    if(!(board.get_color_pieces(Us) & SquareBB(rook_sq))) return false;
+                    return true;
+                }
             }
-            
             return KingAttacks[from] & to_bb;
         }
         case PAWN : {

@@ -268,6 +268,10 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
 
     TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
     Move tt_move = 0;
+
+    if(depth <= 0){ // originally "==", but LMR might lead to negative depth
+        return quiescence_search<Us>(board, alpha, beta, ply);
+    }
     
     if(tt_entry != nullptr){
         tt_move = tt_entry->move;
@@ -279,16 +283,18 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             if(tt_entry->flag == TT_BETA && tt_score >= beta) return tt_score;
         }
     }
-    
-    // Internal Itterative Deepening
-    if (tt_move == 0 && depth >= 4 && !in_check){
-        search<Us>(board, depth - 2, alpha, beta, ply); // just to populate the TT table (with a shallow search)
-        tt_entry = TT.probe(board.get_zobrist_key());
-        if(tt_entry != nullptr) tt_move = tt_entry->move;
+
+    // For Reverse Futility Pruning: evalute board
+    int board_evaluation = evaluate<Us>(board);
+    constexpr int RFP_MAX_DEPTH = 3;
+    constexpr int BASE_MARGIN = 50;
+    constexpr int MARGIN_MULTIPLIER = 100;
+    // Reverse Futility Pruning
+    if(!in_check && depth <= RFP_MAX_DEPTH){
+        int margin = BASE_MARGIN + depth * MARGIN_MULTIPLIER;
+        if(board_evaluation - margin >= beta) return board_evaluation;
     }
 
-    
-    
     // Null-Move Pruning
     constexpr int R = 2; // Depth reduction if we are safe?
     if(!in_check && depth >= 3 && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
@@ -301,14 +307,19 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         }
     }
     
-    
-    if(depth <= 0){ // originally "==", but LMR might lead to negative depth
-        return quiescence_search<Us>(board, alpha, beta, ply);
-    }  
+    // Internal Itterative Deepening
+    if (tt_move == 0 && depth >= 4 && !in_check){
+        search<Us>(board, depth - 2, alpha, beta, ply); // just to populate the TT table (with a shallow search)
+        tt_entry = TT.probe(board.get_zobrist_key());
+        if(tt_entry != nullptr) tt_move = tt_entry->move;
+    }
+
     
     int max_score = -INFINITY_SCORE;
     int legal_moves = 0;
     Move best_move = 0;
+
+    constexpr int LMP_MAX_DEPTH = 4;
     
     
     // score_moves<Us>(list, board, ply, tt_move);
@@ -329,6 +340,24 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         for(int i = 0; i < test_caps.size(); i++) if(test_caps.get(i) == move) move_exists = true;
         Board pre_move_board = board;
         */
+       constexpr int FP_MAX_DEPTH = 4;
+       constexpr int FP_BASE_MARGIN = 100;
+       constexpr int FP_MARGIN_MULTIPLIER = 100;
+
+       
+        // Futility Pruning
+        if(!in_check && depth <= FP_MAX_DEPTH && is_quiet){
+            int margin = FP_BASE_MARGIN + depth * FP_MARGIN_MULTIPLIER;
+            if(board_evaluation + margin <= alpha) continue; // skip this bad move
+        }
+
+        // Late Move Pruning
+        if(!in_check && depth <= LMP_MAX_DEPTH && is_quiet){
+            int lmp_limit = 3 + (depth * depth);
+            if(legal_moves > lmp_limit){ // already searched a lot of quiet moves 
+                continue;
+            }
+        }
 
         if(board.make_move<Us>(move)){
             /*if (!move_exists) {
@@ -438,7 +467,7 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             best_move = (score > max_score ? move : best_move);
             max_score = std::max(score, max_score);
             if(beta <= max_score){
-                int flag = get_flags(move);
+                //int flag = get_flags(move);
 
                 if(is_quiet){
                     // killer moves
