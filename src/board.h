@@ -3,8 +3,10 @@
 #include "types.h"
 #include "zobrist.h"
 #include <array>
+#include <string>
+#include <cassert>
 
-const int MAX_GAME_PLIES = 1024;
+const int MAX_GAME_PLIES = 2048;
 
 class Board {
 private:
@@ -20,7 +22,8 @@ private:
 public:
     Board();
 
-    void load_fen(const char* fen);
+    void load_fen(const std::string& fen);
+    uint64_t generate_zobrist_key() const;
     void clear();
     template <Color Us>
     bool make_move(Move move);
@@ -31,10 +34,18 @@ public:
     template <Color Us>
     void unmake_null_move();
 
-    inline Bitboard get_pieces(Color c, Piece p) const { return pieces[c][p]; }
-    inline Bitboard get_color_pieces(Color c) const { return colorPieces[c]; }
+    // CONTRACT [Memory Primitives]:
+    // - ASSUMES: Color 'c' is strictly WHITE (0) or BLACK (1). Passing NO_COLOR (2) is fatal.
+    // - ASSUMES: Piece 'p' is strictly PAWN (0) to KING (5). Passing NO_PIECE_TYPE (6) or garbage is fatal.
+    // - ASSUMES: Squares ('sq', 'from_sq', 'to_sq') are strictly 0 to 63. Passing NO_SQUARE (64) is fatal.
+    // - GUARANTEES: Strictly bounds-checked board state and Zobrist synchronization.
+
+    inline Bitboard get_pieces(Color c, Piece p) const { assert(c == WHITE || c == BLACK); assert(p >= PAWN && p <= KING); return pieces[c][p]; }
+    inline Bitboard get_color_pieces(Color c) const { assert(c == WHITE || c == BLACK); return colorPieces[c]; }
     inline Bitboard get_all_pieces() const { return allPieces; }
     inline void move_piece(Color c, Piece p, int from_sq, int to_sq) {
+        assert(c == WHITE || c == BLACK); assert(p >= PAWN && p <= KING);
+        assert(from_sq >= A1 && from_sq <= H8); assert(to_sq >= A1 && to_sq <= H8);
         Bitboard move_mask = SquareBB(from_sq) | SquareBB(to_sq);
         pieces[c][p] ^= move_mask;
         colorPieces[c] ^= move_mask;
@@ -44,6 +55,9 @@ public:
         currentState.Zobrist_Key ^= zobrist_pieces[c][p][from_sq] ^ zobrist_pieces[c][p][to_sq];
     }
     inline void quiet_move_piece(Color c, Piece p, int from_sq, int to_sq) {
+        assert(c == WHITE || c == BLACK); assert(p >= PAWN && p <= KING);
+        assert(from_sq >= A1 && from_sq <= H8); assert(to_sq >= A1 && to_sq <= H8);
+
         Bitboard move_mask = SquareBB(from_sq) | SquareBB(to_sq);
         pieces[c][p] ^= move_mask;
         colorPieces[c] ^= move_mask;
@@ -52,6 +66,8 @@ public:
         pieceOnSquare[from_sq] = NO_PIECE_TYPE;
     }
     inline void toggle_piece(Color c, Piece p, int sq) {
+        assert(c == WHITE || c == BLACK); assert(p >= PAWN && p <= KING); assert(sq >= A1 && sq <= H8);
+
         Bitboard bb = SquareBB(sq);
         pieces[c][p] ^= bb;
         colorPieces[c] ^= bb;
@@ -59,6 +75,8 @@ public:
         currentState.Zobrist_Key ^= zobrist_pieces[c][p][sq];
     }
     inline void quiet_toggle_piece(Color c, Piece p, int sq) {
+        assert(c == WHITE || c == BLACK); assert(p >= PAWN && p <= KING); assert(sq >= A1 && sq <= H8);
+
         Bitboard bb = SquareBB(sq);
         pieces[c][p] ^= bb;
         colorPieces[c] ^= bb;
@@ -68,7 +86,7 @@ public:
     inline void quiet_add_piece(Color c, Piece p, int sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = p; }
     inline void remove_piece(Color c, Piece p, int sq){ toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
     inline void quiet_remove_piece(Color c, Piece p, int sq){ quiet_toggle_piece(c,p,sq); pieceOnSquare[sq] = NO_PIECE_TYPE; }
-    inline Piece get_piece_on_sq(int sq) const { return pieceOnSquare[sq]; }
+    inline Piece get_piece_on_sq(int sq) const { assert(sq >= A1 && sq <= H8); return pieceOnSquare[sq]; }
     inline Color get_side_to_move() const { return sideToMove; }
     inline Bitboard get_en_passant_Bitboard() const { return currentState.En_Passant_Target_Square == NO_SQUARE ? 0ULL : SquareBB(currentState.En_Passant_Target_Square); }
     inline int get_castling_rights() const { return currentState.castling_rights; }
@@ -77,16 +95,48 @@ public:
     inline bool is_draw(){
         if(currentState.Half_move_Clock >= 100) return true;
         int limit = gamePly - currentState.Half_move_Clock;
+        assert(limit >= 0 && "Half-move clock exceeds total game plies!");
         for(int i = gamePly - 2; i>=limit; i-=2){
             if(HistoryStack[i].Zobrist_Key == currentState.Zobrist_Key) return true;
         }
         return false;
     }
+
+    //temp AI Generated, delete after the debug
+    /*inline void check_state_integrity() const {
+        for (int sq = 0; sq < 64; sq++) {
+            Piece p = pieceOnSquare[sq];
+            
+            // 1. If pieceOnSquare says a piece is here, the bitboard MUST have a 1.
+            if (p != NO_PIECE_TYPE) {
+                Color c = (colorPieces[WHITE] & SquareBB(sq)) ? WHITE : BLACK;
+                assert((pieces[c][p] & SquareBB(sq)) && "Integrity: pieceOnSquare exists, but Bitboard is 0!");
+            }
+            
+            // 2. If the bitboard has a 1, pieceOnSquare MUST NOT be empty.
+            bool is_white = colorPieces[WHITE] & SquareBB(sq);
+            bool is_black = colorPieces[BLACK] & SquareBB(sq);
+            assert(!(is_white && is_black) && "Integrity: Square occupied by both colors!");
+            
+            if (is_white || is_black) {
+                assert(p != NO_PIECE_TYPE && "Integrity: Bitboard has a piece, but pieceOnSquare is empty!");
+            }
+        }
+    }*/
 };
 
+// CONTRACT [Null Moves]:
+// - ASSUMES (make): gamePly is strictly less than MAX_GAME_PLIES.
+// - ASSUMES (make): En_Passant_Target_Square is strictly 0-63 or NO_SQUARE (64) to prevent Zobrist array overflow.
+// - ASSUMES (unmake): gamePly is strictly greater than 0.
+// - GUARANTEES: A safe "pass" turn that perfectly syncs the Zobrist key and History.
 
-template <Color Us> // Color of the side that makes the move
+template <Color Us>
 void Board::make_null_move(){
+    // CONTRACT ENFORCEMENT
+    assert(gamePly < MAX_GAME_PLIES && "make_null_move: HistoryStack overflow!");
+    assert(currentState.En_Passant_Target_Square <= NO_SQUARE && "make_null_move: Corrupted EP square index!");
+
     constexpr Color Them = Us == WHITE ? BLACK : WHITE;
     HistoryStack[gamePly++] = currentState;
     currentState.Half_move_Clock++;
@@ -96,17 +146,26 @@ void Board::make_null_move(){
     sideToMove = Them;
 }
 
-template <Color Us> // Color of the side that makes the move
+template <Color Us>
 void Board::unmake_null_move(){
-    constexpr Color Them = Us == WHITE ? BLACK : WHITE;
+    // CONTRACT ENFORCEMENT
+    assert(gamePly > 0 && "unmake_null_move: HistoryStack underflow!");
+
     currentState = HistoryStack[--gamePly];
     sideToMove = Us;
 }
 
 
+// CONTRACT [make_move & unmake_move]:
+// - ASSUMES: The provided move is at least Pseudo-Legal for the current board state.
+// - ASSUMES: gamePly < MAX_GAME_PLIES (History array bounds).
+// - GUARANTEES: Fully executes the state transition. 
+// - GUARANTEES: Returns 'false' ONLY if the move leaves the active King in check.
 
 template <Color Us> // Color of the side that makes the move
 bool Board::make_move(Move move){
+    // check_state_integrity();
+
     // Phase 0: Basic Variables
     constexpr Color Them = Us == WHITE ? BLACK : WHITE;
     int from_sq = get_from_sq(move);
@@ -115,11 +174,28 @@ bool Board::make_move(Move move){
     Piece pieceType = pieceOnSquare[from_sq];
     Piece capturedType = pieceOnSquare[to_sq];
     
-    if(capturedType == KING) return false; // performance problem?
-
-    if(pieceType == NO_PIECE_TYPE) return false; // performance problem?
-
-    if((get_pieces(Us,pieceType) & SquareBB(from_sq)) == 0) return false; // performance problem?
+    // STRICT CONTRACT ENFORCEMENT
+    for (int sq = 0; sq < 64; sq++) {
+        Piece p = pieceOnSquare[sq];
+        if (p != NO_PIECE_TYPE) {
+            Color c = (colorPieces[WHITE] & SquareBB(sq)) ? WHITE : BLACK;
+            assert((pieces[c][p] & SquareBB(sq)) && "CRITICAL: pieceOnSquare completely desynced from bitboards!");
+        }
+    }
+    assert((get_color_pieces(Us) & SquareBB(from_sq)) && "make_move: Bitboard missing Us piece!");
+    assert((pieces[Us][pieceType] & SquareBB(from_sq)) && "make_move: pieceOnSquare completely desynced from Bitboards!");
+    assert(gamePly < MAX_GAME_PLIES && "HistoryStack overflow!");
+    assert(pieceType != NO_PIECE_TYPE && "make_move: Attempted to move an empty square!");
+    assert((colorPieces[Us] & SquareBB(from_sq)) && "make_move: Attempted to move enemy piece!");
+    assert(!(capturedType != NO_PIECE_TYPE && (colorPieces[Us] & SquareBB(to_sq))) && "make_move: Friendly fire!");
+    assert(capturedType != KING && "make_move: Attempted to capture the King!");
+    
+    if(flag == 2 || flag == 3) assert(pieceType == KING && "make_move: Non-King attempting to castle!");
+    if(flag == 5) {
+        assert(pieceType == PAWN && "make_move: Non-Pawn attempting En Passant!");
+        assert(to_sq == currentState.En_Passant_Target_Square && "make_move: EP target mismatch!");
+    }
+    if(flag >= 8) assert(pieceType == PAWN && "make_move: Non-Pawn attempting to promote!");
 
     // Phase 1: History Snapshot
     HistoryStack[gamePly++] = currentState;
@@ -151,10 +227,10 @@ bool Board::make_move(Move move){
             currentState.En_Passant_Target_Square = static_cast<Square>(to_sq + (Us == WHITE ? -8 : 8));
             currentState.Zobrist_Key ^= zobrist_ep[currentState.En_Passant_Target_Square]; // square indexable
         } else if(flag == 2){ // KING SIDE
-            Square from_rook = Us == WHITE ? H1 : H8;           // HERE
+            Square from_rook = Us == WHITE ? H1 : H8;
             Square to_rook = static_cast<Square>(from_rook - 2);
             move_piece(Us,ROOK,from_rook,to_rook);
-        } else if(flag == 3){ // QUEEN SIDE                     // AND HERE
+        } else if(flag == 3){ // QUEEN SIDE
             Square from_rook = Us == WHITE ? A1 : A8;
             Square to_rook = static_cast<Square>(from_rook + 3);
             move_piece(Us,ROOK,from_rook,to_rook);
@@ -171,13 +247,30 @@ bool Board::make_move(Move move){
     Square king_sq = static_cast<Square>(lsb(get_pieces(Us, KING)));
     if(is_square_attacked<Them>(king_sq, *this)) {
         unmake_move<Us>(move);
+        // STRICT CONTRACT ENFORCEMENT
+        for (int sq = 0; sq < 64; sq++) {
+            Piece p = pieceOnSquare[sq];
+            if (p != NO_PIECE_TYPE) {
+                Color c = (colorPieces[WHITE] & SquareBB(sq)) ? WHITE : BLACK;
+                assert((pieces[c][p] & SquareBB(sq)) && "CRITICAL: pieceOnSquare completely desynced from bitboards!");
+            }
+        }
         return false;
     }
 
+    // STRICT CONTRACT ENFORCEMENT
+    for (int sq = 0; sq < 64; sq++) {
+        Piece p = pieceOnSquare[sq];
+        if (p != NO_PIECE_TYPE) {
+            Color c = (colorPieces[WHITE] & SquareBB(sq)) ? WHITE : BLACK;
+            assert((pieces[c][p] & SquareBB(sq)) && "CRITICAL: pieceOnSquare completely desynced from bitboards!");
+        }
+    }
+    // check_state_integrity();
     return true;
 }
 
-template <Color Us> // so we call with the side who did the move, right?
+template <Color Us>
 void Board::unmake_move(Move move){
     // Phase 0: Basic Variables
     constexpr Color Them = Us == WHITE ? BLACK : WHITE;
@@ -186,6 +279,16 @@ void Board::unmake_move(Move move){
     int flag = get_flags(move);
     Piece pieceType = pieceOnSquare[to_sq];
     Piece capturedType = currentState.Captured_Piece_Type;
+
+
+    // SEMANTIC CONTRACT ENFORCEMENT
+    assert(gamePly > 0 && "unmake_move: HistoryStack underflow (gamePly is 0)!");
+    assert(pieceType != NO_PIECE_TYPE && "unmake_move: Attempting to unmake a move from an empty square!");
+    assert((colorPieces[Us] & SquareBB(to_sq)) && "unmake_move: Piece to unmake does not belong to Us!");
+    if(flag >= 8) {
+        Piece promoted_to = static_cast<Piece>(KNIGHT + (flag & 3)); 
+        assert(pieceType == promoted_to && "unmake_move: Promoted piece type mismatch!");
+    }
     
     // Phase 1: Base Piece Reversal
     quiet_move_piece(Us,pieceType,to_sq,from_sq);
@@ -218,4 +321,5 @@ void Board::unmake_move(Move move){
     // Phase 4: State Time Travel
     currentState = HistoryStack[--gamePly];
     sideToMove = Us;
+    // check_state_integrity();
 }

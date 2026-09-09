@@ -4,20 +4,28 @@
 #include "movegen.h"
 #include "see.h"
 
+// temp
+#include "utils.h"
+
 extern int history_heuristic[2][64][64];
 
 enum MovePickerState : uint8_t {
     TT_MOVE, GENERATE_CAPTURES, GOOD_CAPTURES, KILLERS, GENERATE_QUIETS, QUIETS, BAD_CAPTURES
 };
 
-const int MVV_LVT[6][6] = { // AI Generated!
-    // Attacker: P,   N,   B,   R,   Q,   K
-    { 15,  14,  13,  12,  11,  10 }, // Victim: Pawn (0)
-    { 25,  24,  23,  22,  21,  20 }, // Victim: Knight (1)
-    { 35,  34,  33,  32,  31,  30 }, // Victim: Bishop (2)
-    { 45,  44,  43,  42,  41,  40 }, // Victim: Rook (3)
-    { 55,  54,  53,  52,  51,  50 }, // Victim: Queen (4)
-    { 0,   0,   0,   0,   0,   0  }  // Victim: King (5) - Kings aren't captured
+// CONTRACT [Move Picker]:
+// - ASSUMES: Arrays are sized to 7x7 to safely absorb NO_PIECE_TYPE (6) without memory corruption.
+// - GUARANTEES: Fast, bounds-checked move scoring.
+
+const int MVV_LVT[7][7] = { // AI Generated!
+    // Attacker: P,   N,   B,   R,   Q,   K,   NO_PIECE
+    { 15,  14,  13,  12,  11,  10,  0 }, // Victim: Pawn (0)
+    { 25,  24,  23,  22,  21,  20,  0 }, // Victim: Knight (1)
+    { 35,  34,  33,  32,  31,  30,  0 }, // Victim: Bishop (2)
+    { 45,  44,  43,  42,  41,  40,  0 }, // Victim: Rook (3)
+    { 55,  54,  53,  52,  51,  50,  0 }, // Victim: Queen (4)
+    { 0,   0,   0,   0,   0,   0,   0 }, // Victim: King (5) 
+    { 0,   0,   0,   0,   0,   0,   0 }  // Victim: NO_PIECE_TYPE (6) - Failsafe
 };
 
 const int FLAG_BONUS[16] = { // AI Generated!
@@ -57,6 +65,9 @@ private:
             int base_flag;
             Piece attacker = board.get_piece_on_sq(static_cast<Square>(get_from_sq(m)));
             Piece victim;
+
+            assert(attacker >= PAWN && attacker <= KING && "MovePicker: Attacker is NO_PIECE_TYPE!");
+
             if(flag==5){
                 victim = PAWN; // En passant
                 base_flag = (static_exchange_evaluation(board, m) >= 0) ? FLAG_BONUS[flag] : -FLAG_BONUS[flag];
@@ -66,6 +77,7 @@ private:
                 base_flag = FLAG_BONUS[flag];
             } else {
                 victim = board.get_piece_on_sq(static_cast<Square>(get_to_sq(m)));
+                assert(victim >= PAWN && victim <= KING && "MovePicker: Capture victim is NO_PIECE_TYPE!");
                 base_flag = (static_exchange_evaluation(board, m) >= 0) ? FLAG_BONUS[flag] : -FLAG_BONUS[flag];
             }
             captures.scores[i] =  base_flag + MVV_LVT[victim][attacker];
@@ -82,6 +94,9 @@ private:
 
             int from = get_from_sq(m);
             int to = get_to_sq(m);
+
+            assert(from >= 0 && from < 64 && to >= 0 && to < 64 && "MovePicker: History heuristic out of bounds!");
+            
             quiets.scores[i] = history_heuristic[Us][from][to];
         }
     }
@@ -131,6 +146,12 @@ public:
                 Move move = captures.get(captures_index++);
 
                 //if(move == tt_move) continue;
+
+                // PROOF: Catch the generator hallucinating EP moves
+                if (get_flags(move) == 5 && !is_pseudo_legal<Us>(board, move)) {
+                    std::cout << "CAUGHT BAD EP FROM GENERATOR: " << move_to_string(board, move) << "\n";
+                    continue; 
+                }
 
                 return move;
             }

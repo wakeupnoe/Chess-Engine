@@ -1,9 +1,11 @@
 #include "see.h"
 #include "attacks.h"
+#include <algorithm>
 
 namespace
 {
     Bitboard get_dynamic_attackers(int to, Bitboard occ, const Board& board){
+        assert(to >= 0 && to <= 63 && "get_dynamic_attackers: Square out of bounds!");
         Square sq = static_cast<Square>(to);
         Bitboard attackers = 0ULL;
         
@@ -27,13 +29,14 @@ namespace
 
 
 
-constexpr int PIECE_VALUES[6] = {
+constexpr int PIECE_VALUES[7] = {
     100, // PAWN
     300, // KNIGHT
     320, // BISHOP
     500, // ROOK
     900, // QUEEN
-    30000 // KING
+    30000, // KING
+    0    // for quiet moves
 };
 
 int static_exchange_evaluation(const Board& board, Move move){
@@ -43,6 +46,9 @@ int static_exchange_evaluation(const Board& board, Move move){
 
     Piece attacker = board.get_piece_on_sq(from);
     Piece victim = board.get_piece_on_sq(to);
+
+    assert(attacker >= PAWN && attacker <= KING && "SEE: Attacker is NO_PIECE_TYPE or garbage!");
+    assert(victim >= PAWN && victim <= NO_PIECE_TYPE && "SEE: Victim is out of bounds!");
 
     if(flag == 5) victim = PAWN; // en passant
     int promo_bonus = 0;
@@ -65,6 +71,8 @@ int static_exchange_evaluation(const Board& board, Move move){
 
     while(true) {
         d++;
+        assert(d < 32 && "SEE: Gain array overflow (too many attackers)!");
+
         gain[d] = PIECE_VALUES[attacker] - gain[d-1];
 
         if(std::max(-gain[d-1], gain[d]) < 0) break; // early exit if potential is too low to compenesate for losses
@@ -86,7 +94,7 @@ int static_exchange_evaluation(const Board& board, Move move){
             Bitboard opponent_attackers = attackers & board.get_color_pieces(next_player == WHITE ? BLACK : WHITE);
             if(opponent_attackers) break;
         }
-
+        assert(next_from != -1 && "SEE: No attacker found despite overlap!");
         occ ^= SquareBB(next_from);
 
         attackers = get_dynamic_attackers(to, occ, board);

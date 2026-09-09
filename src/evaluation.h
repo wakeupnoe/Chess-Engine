@@ -5,14 +5,19 @@
 #include "bitboard.h"
 #include "types.h"
 
+// CONTRACT [Evaluation]:
+// - ASSUMES: Board bitboards only contain bits in the 0-63 range.
+// - GUARANTEES: Safe evaluation without array out-of-bounds reads.
+
 // Standard piece values in centipawns
-constexpr int PIECE_VALUES[6] = {
+constexpr int PIECE_VALUES[7] = {
     100, // PAWN
     300, // KNIGHT
     320, // BISHOP (Slightly higher than knight is standard!)
     500, // ROOK
     900, // QUEEN
-    0    // KING (King is infinite, evaluated via checkmate logic instead)
+    0,    // KING (King is infinite, evaluated via checkmate logic instead)
+    0    // NO_PIECE_TYPE
 };
 
 // Pawn: Strongly encourages central control and advancing, penalizes a/h files slightly.
@@ -100,12 +105,14 @@ int evaluate(Board& board) {
         uint64_t our_bitboard = board.get_pieces(Us, piece);
         while (our_bitboard) {
             int sq = lsb(our_bitboard);
+            assert(sq >= 0 && sq <= 63 && "evaluate: sq out of bounds!");
             our_bitboard &= our_bitboard - 1; // Clear LS1B
 
             score += PIECE_VALUES[p];
             
             // Flip the square vertically if we are Black!
             int table_sq = (Us == WHITE) ? sq : sq ^ 56;
+            assert(table_sq >= 0 && table_sq <= 63 && "evaluate: table_sq out of bounds!");
             
             if (p == PAWN)   score += mg_pawn_table[table_sq];
             if (p == KNIGHT) score += mg_knight_table[table_sq];
@@ -119,11 +126,13 @@ int evaluate(Board& board) {
         uint64_t their_bitboard = board.get_pieces(Them, piece);
         while (their_bitboard) {
             int sq = lsb(their_bitboard);
+            assert(sq >= 0 && sq <= 63 && "evaluate: sq out of bounds!");
             their_bitboard &= their_bitboard - 1;
 
             score -= PIECE_VALUES[p];
             
             int table_sq = (Them == WHITE) ? sq : sq ^ 56;
+            assert(table_sq >= 0 && table_sq <= 63 && "evaluate: table_sq out of bounds!");
             
             if (p == PAWN)   score -= mg_pawn_table[table_sq];
             if (p == KNIGHT) score -= mg_knight_table[table_sq];

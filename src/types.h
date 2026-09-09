@@ -3,6 +3,13 @@
 
 using Bitboard = uint64_t;
 using Move = uint16_t;
+
+// CONTRACT [Types & Memory]:
+// - GUARANTEES: Move extraction (from/to/flags) yields strictly masked bounds (0-63, 0-15).
+// - GUARANTEES: StateInfo and TTEntry maintain strict 16-byte alignment to prevent memory spillover.
+// - ASSUMES: 'Move' passed to extractors is non-zero.
+// - ASSUMES: Enum indices (Square, Piece, Color) used for array lookups (like CASTLING_MASK) are NEVER sentinel values (NO_SQUARE, NO_PIECE_TYPE).
+
 inline int get_from_sq(Move m) { return m & 0x3F; }
 inline int get_to_sq(Move m) { return (m>>6) & 0x3F; }
 inline int get_flags(Move m) { return m >> 12; }
@@ -42,7 +49,7 @@ inline constexpr uint8_t CASTLING_MASK[64] = {
      7, 15, 15, 15,  3, 15, 15, 11,
 };
 
-struct StateInfo {                                                              //  optimal for padding    
+struct alignas(16) StateInfo {                                                              //  optimal for padding    
     Bitboard Zobrist_Key = 0ULL; //Incremental Zobrist Hash Key                 //  8 bytes
     uint8_t castling_rights = 15; //Castling Rights last 4 bits 1 1 1 1         //  1 byte
     Square En_Passant_Target_Square = NO_SQUARE; // En Passant Target Square    //  1 byte

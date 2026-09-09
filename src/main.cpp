@@ -1,21 +1,27 @@
-#include "AIPerft.h"
+//#include "AIPerft.h"
 #include "attacks.h"
+#include "tt.h"
+#include "uci.h"
 #include "search.h"
-#include "board.h"
-#include "movegen.h"
-#include "utils.h"
+//#include "board.h"
+//#include "movegen.h"
+//#include "utils.h"
 #include "zobrist.h"
 #include <iostream>
 
 
 int main(){
-    std::cout << "Starting Setup" << std::endl;
     init_attacks();
     zobrist_init();
     init_lmr_table();
     TT.resize(64);
-    std::cout << "Setup done" << std::endl;
+    UCI::loop();
 
+    return 0;
+}
+
+// OLD
+/*
     Board board;
     board.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     // board.load_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"); // works
@@ -66,5 +72,4 @@ int main(){
         }
     }
 
-    return 0;
-}
+*/

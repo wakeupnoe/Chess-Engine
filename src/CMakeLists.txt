@@ -8,6 +8,7 @@ add_library(EngineLib STATIC
     move_picker.cpp
     search.cpp
     see.cpp
+    uci.cpp
     tt.cpp
     zobrist.cpp
 )

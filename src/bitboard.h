@@ -1,21 +1,31 @@
 #pragma once
 #include "types.h"
 #include <bit>
+#include <cassert>
+
+// CONTRACT [Bitboards]:
+// - ASSUMES: All bit-shift targets ('tar') are strictly 0-63. Passing NO_SQUARE (64) triggers Undefined Behavior.
+// - ASSUMES: Bitboard 'b' is strictly non-zero for lsb() and pop_lsb() to prevent 64-bit overflow.
+// - GUARANTEES: Fast, bounds-checked bit manipulation and mask generation.
 
 
 inline void SetBit(Bitboard &b, uint8_t tar){
+    assert(tar < 64 && "Bit shift out of bounds (NO_SQUARE passed?)");
     b |= (1ULL<<tar);
 }
 inline bool GetBit(Bitboard b, uint8_t tar){
+    assert(tar < 64 && "Bit shift out of bounds (NO_SQUARE passed?)");
     return b & (1ULL<<tar);
 }
 inline void PopBit(Bitboard &b, uint8_t tar){
+    assert(tar < 64 && "Bit shift out of bounds (NO_SQUARE passed?)");
     b &= ~(1ULL<<tar);
 }
 inline int popcount(Bitboard b){
     return std::popcount(b);
 }
 inline int lsb(Bitboard b){
+    assert(b != 0ULL && "Attempted lsb() on an empty bitboard");
     return std::countr_zero(b);
 }
 inline int pop_lsb(Bitboard &b){
@@ -25,6 +35,7 @@ inline int pop_lsb(Bitboard &b){
 }
 
 inline Bitboard SquareBB(uint8_t tar){
+    assert(tar < 64 && "Bit shift out of bounds (NO_SQUARE passed?)");
     return 1ULL<<tar;
 }
 

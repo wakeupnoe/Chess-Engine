@@ -11,6 +11,11 @@
 #include <iostream>
 #include <chrono>
 
+// CONTRACT [Search Globals & Limits]:
+// - ASSUMES: Search ply NEVER exceeds MAX_PLY (128). Accessing killer_moves at ply >= 128 is a fatal overflow.
+// - ASSUMES: LMR_table indexing (depth, move_count) is clamped to < 64.
+// - GUARANTEES: Safe history heuristic initialization.
+
 constexpr int MAX_PLY = 128; // was 64, extended for quiescence search; upper bound of search depth
 constexpr int NUM_KILLERS = 2; // how many killermoves we store (this should be 2 if otherwise, we need to update move_picker!)
 
@@ -19,6 +24,7 @@ extern int LMR_table[64][64];
 void init_lmr_table();
 
 inline uint64_t nodes_searched = 0;
+inline int max_seldepth = 0;
 inline Move killer_moves[MAX_PLY][NUM_KILLERS];
 inline int history_heuristic[2][64][64];
 
@@ -26,87 +32,21 @@ inline void clear_history_heuristic(){
     std::memset(history_heuristic,0,sizeof(history_heuristic));
 }
 
-/*const int MVV_LVT[6][6] = { // AI Generated!
-    // Attacker: P,   N,   B,   R,   Q,   K
-    { 15,  14,  13,  12,  11,  10 }, // Victim: Pawn (0)
-    { 25,  24,  23,  22,  21,  20 }, // Victim: Knight (1)
-    { 35,  34,  33,  32,  31,  30 }, // Victim: Bishop (2)
-    { 45,  44,  43,  42,  41,  40 }, // Victim: Rook (3)
-    { 55,  54,  53,  52,  51,  50 }, // Victim: Queen (4)
-    { 0,   0,   0,   0,   0,   0  }  // Victim: King (5) - Kings aren't captured
-};*/
-
-/*const int FLAG_BONUS[16] = { // AI Generated!
-    0,         // 0: Quiet
-    0,         // 1: Double Push
-    0,         // 2: King Castle
-    0,         // 3: Queen Castle
-    1'000'000, // 4: Capture
-    1'000'000, // 5: EP Capture
-    0, 0,      // 6-7: Unused
-    0,         // 8: Promo N
-    0,         // 9: Promo B
-    0,         // 10: Promo R
-    900'000,   // 11: Promo Q (Almost as good as a capture!)
-    1'000'000, // 12: Promo N Cap
-    1'000'000, // 13: Promo B Cap
-    1'000'000, // 14: Promo R Cap
-    1'900'000  // 15: Promo Q Cap (Capture + Queen Promo!)
-};*/
-
-/*template <Color Us>
-void score_moves(MoveList& list, const Board& board, int ply, Move tt_move){
-    constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
-    for(int i = 0; i<list.size(); i++){
-        Move move = list.get(i);
-        int score = 0;
-        int flag = get_flags(move);
-        int from = get_from_sq(move);
-        int to = get_to_sq(move);
-        
-        // 1. TT Score: 10,000,000
-        if(move == tt_move){
-            list.scores[i] = 10'000'000;
-            continue;
-        }
-
-        // 2. Good and Equal Captures & Queen Promotions (Score: 1,000,000 to 2,000,000)
-        bool is_capture = flag == 4 || flag == 5 || flag >= 12;
-        bool is_queen_promo = flag == 11;
-        if(is_capture || is_queen_promo){
-            Piece attacker = board.get_piece_on_sq(static_cast<Square>(from));
-            Piece victim = board.get_piece_on_sq(static_cast<Square>(to));
-            
-            victim = (flag == 5 ? PAWN : victim);
-            score = (static_exchange_evaluation(board, move) >= 0 ? FLAG_BONUS[flag] : - FLAG_BONUS[flag])  + MVV_LVT[victim][attacker];
-        } else {
-            // 3. Killer Moves (Score: 900,000)
-            bool is_killer = false;
-            for(int k = 0; k<NUM_KILLERS; k++){
-                if(move == killer_moves[ply][k]){
-                    score = 900'000 - k*100'000;
-                    is_killer = true;
-                }
-            }
-            
-            // 4. The History Heuristic (Score: 0 to ~800,000)
-            if(!is_killer){
-                score = history_heuristic[Us][from][to];
-            }
-        }
-        
-        // 5. Bad Captures (Score: Negative)
-        
-        list.scores[i] = score;
-    }
-}*/
+// CONTRACT [Root Search]:
+// - ASSUMES: The board has a King for the side to move (Us).
+// - ASSUMES: target_depth is reasonable (<= MAX_PLY) so search doesn't overflow ply arrays.
+// - GUARANTEES: Safe PV extraction that aborts on illegal TT moves.
 
 template <Color Us>
 Move get_best_move(Board& board, int target_depth){
+    assert(target_depth > 0 && target_depth <= MAX_PLY && "get_best_move: target_depth out of bounds!");
+    assert(board.get_pieces(Us, KING) != 0ULL && "get_best_move: Root position has no King!");
+
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     Move best_move_overall = 0;
     clear_history_heuristic();
     nodes_searched = 0;
+    max_seldepth = 0;
 
     auto start_time = std::chrono::steady_clock::now();
     int prev_score = 0;
@@ -119,10 +59,8 @@ Move get_best_move(Board& board, int target_depth){
         
         int root_newdepth = in_check ? current_depth : current_depth - 1;
 
-        //MoveList list = generate_moves<Us>(board);
         TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
         Move tt_move = tt_entry != nullptr ? tt_entry->move : 0;
-        //score_moves<Us>(list, board, 0, tt_move);
         Move current_best_move = 0;
         
         while(true){
@@ -135,20 +73,6 @@ Move get_best_move(Board& board, int target_depth){
             Move move;
             
             while((move = picker.next_move()) != 0){
-            /*for(int i = 0; i<list.size(); i++){
-                // lazy selection sort
-                int best_score_idx = i;
-                for(int j = i+1; j<list.size(); j++){
-                    if(list.scores[j] > list.scores[best_score_idx]){
-                        best_score_idx = j;
-                    }
-                }
-    
-                std::swap(list.moves[i],list.moves[best_score_idx]);
-                std::swap(list.scores[i],list.scores[best_score_idx]);
-    
-                Move move = list.get(i);
-              */  
                 if(board.make_move<Us>(move)){
                     legal_moves++;
                     int score;
@@ -195,8 +119,6 @@ Move get_best_move(Board& board, int target_depth){
             break;
         }
 
-
-
         // UCI metrics:
         auto current_time = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = current_time - start_time;
@@ -206,19 +128,43 @@ Move get_best_move(Board& board, int target_depth){
         int time_ms = static_cast<int>(seconds * 1000);
         int hashfull = TT.get_hashfull();
 
+        std::string score_string;
+        if(std::abs(prev_score) > MATE_SCORE - 100){
+            int plies_to_mate = MATE_SCORE - std::abs(prev_score);
+            int moves_to_mate = (plies_to_mate + 1) / 2;
+            if(prev_score < 0) moves_to_mate = -moves_to_mate;
+            score_string = "mate " + std::to_string(moves_to_mate);
+        } else {
+            score_string = "cp " + std::to_string(prev_score);
+        }
+
         // UCI type output
         /**/
         std::cout << "info depth " << current_depth
-                << " score cp " << prev_score
+                << " seldepth " << max_seldepth
+                << " score " << score_string
                 << " nodes " << nodes_searched
                 << " nps " << nps
                 << " hashfull " << hashfull
                 << " time " << time_ms
-                << " pv "
-                << std::endl;
+                << " pv ";
         /**/
-        //std::cout << " best_move " << move_to_string(board, current_best_move) << std::endl; // todo delete, not in the UCI 
-
+        Board temp_board = board;
+        for(int i = 0; i< 64; i++){
+            TTEntry* entry = TT.probe(temp_board.get_zobrist_key());
+            if(entry != nullptr && entry->move!=0){
+                Move pv_move = entry->move;
+                Color c = temp_board.get_side_to_move();
+                bool is_valid = (c == WHITE) ? is_pseudo_legal<WHITE>(temp_board, pv_move) :  is_pseudo_legal<BLACK>(temp_board, pv_move);
+                if(!is_valid) break;
+                std::cout << move_to_string(temp_board, pv_move) << " ";
+                bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(pv_move) : temp_board.make_move<BLACK>(pv_move);
+                if(!legal) break;
+            } else {
+                break;
+            }
+        }
+        std::cout << std::endl;
 
         if(prev_score > MATE_SCORE - 100){
             break; // forced mate detected
@@ -227,13 +173,19 @@ Move get_best_move(Board& board, int target_depth){
     return best_move_overall;
 }
 
-
+// CONTRACT [Quiescence Search]:
+// - ASSUMES: ply is strictly between 0 and MAX_PLY - 1.
+// - GUARANTEES: Safe access to killer_moves array and prevents infinite capture recursion.
 
 template <Color Us>
 int quiescence_search(Board& board, int alpha, int beta, int ply){
+    assert(ply >= 0 && ply < MAX_PLY && "qsearch: Ply out of bounds!");
+
     nodes_searched++;
-    
+    max_seldepth = std::max(max_seldepth, ply);
+    // board.check_state_integrity();
     int standard_pat = evaluate<Us>(board);
+    // board.check_state_integrity();
     if(ply >= MAX_PLY - 1) return standard_pat;
 
     if(standard_pat >= beta) return beta;
@@ -257,33 +209,18 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
     
     int max_score = standard_pat;
     Move best_move = 0;
-    // MoveList list = generate_moves<Us>(board);
-    // score_moves<Us>(list, board, ply, tt_move);
     MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1]);
     Move move;
     while((move = picker.next_move()) != 0){
         if(picker.get_current_state() > GOOD_CAPTURES) break; // makes sense?
-    /*for(int i = 0; i<list.size(); i++){
-        // lazy selection sort
-        int best_score_idx = i;
-        for(int j = i+1; j<list.size(); j++){
-            if(list.scores[j] > list.scores[best_score_idx]){
-                best_score_idx = j;
-            }
-        }
-        
-        std::swap(list.moves[i],list.moves[best_score_idx]);
-        std::swap(list.scores[i],list.scores[best_score_idx]);
-        
-        Move move = list.get(i);
-    */
         int flag = get_flags(move);
         bool is_quiet = flag <= 3;
-        if(is_quiet) continue; // we can use current_State in picker, right?
-        //if(static_exchange_evaluation(board,move) < 0) continue;
+        if(is_quiet) continue;
         
         if(board.make_move<Us>(move)){
+            // board.check_state_integrity();
             int score = -quiescence_search<Them>(board, -beta, -alpha, ply + 1);
+            // board.check_state_integrity();
             board.unmake_move<Us>(move);
 
             best_move = (score > max_score ? move : best_move);
@@ -304,10 +241,20 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
 
 
 
-
+// CONTRACT [Main Search]:
+// - ASSUMES: ply is strictly between 0 and MAX_PLY.
+// - GUARANTEES: Safe recursive depth management without overflowing killer_moves or history heuristics.
 
 template <Color Us>
 int search(Board& board, int depth, int alpha, int beta, int ply){
+    assert(ply >= 0 && ply < MAX_PLY && "search: Ply out of bounds!");
+    assert(board.get_pieces(Us, KING) != 0ULL && "search: Board has no King!");
+
+    //TEMP DEBUGGING: // AI GENERATED
+    // uint64_t pre_move_key = board.get_zobrist_key();
+    // uint64_t hardcalc_pre = board.generate_zobrist_key();
+    // DELETE TILL HERE
+
     nodes_searched++;
     if(board.is_draw()) return 0; // "ply > 0 &&" important if we remove root search function
     if(ply >= MAX_PLY - 1) return evaluate<Us>(board);
@@ -363,33 +310,106 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     int legal_moves = 0;
     Move best_move = 0;
     
-    // MoveList list = generate_moves<Us>(board);
     
     // score_moves<Us>(list, board, ply, tt_move);
     MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1]);
     Move move;
     while((move = picker.next_move()) != 0){
-    /*for(int i = 0; i<list.size(); i++){
-        // lazy selection sort
-        int best_score_idx = i;
-        for(int j = i+1; j<list.size(); j++){
-            if(list.scores[j] > list.scores[best_score_idx]){
-                best_score_idx = j;
-            }
-        }
-        
-        std::swap(list.moves[i],list.moves[best_score_idx]);
-        std::swap(list.scores[i],list.scores[best_score_idx]);
-        
-        Move move = list.get(i);
-        */
         int flag = get_flags(move);
         bool is_quiet = flag <= 3;
         bool is_capture = flag == 4 || flag == 5 || flag >= 12;
-        //int SME = 0;
-        //if(is_capture) SME = static_exchange_evaluation(board, move); // needed?
+        
         bool is_bad_capture = (picker.get_current_state() == BAD_CAPTURES);
+        
+        // AI GENERATED DEBUG INFO
+        /*MoveList test_list = generate_quiets<Us>(board);
+        MoveList test_caps = generate_captures<Us>(board);
+        bool move_exists = false;
+        for(int i = 0; i < test_list.size(); i++) if(test_list.get(i) == move) move_exists = true;
+        for(int i = 0; i < test_caps.size(); i++) if(test_caps.get(i) == move) move_exists = true;
+        Board pre_move_board = board;
+        */
+
         if(board.make_move<Us>(move)){
+            /*if (!move_exists) {
+                std::cout << "GHOST MOVE INJECTED BY PICKER AND PLAYED: " << move_to_string(board, move) << std::endl;
+                //exit(1);
+                assert(false && "GHOST MOVE INJECTED BY PICKER AND PLAYED");
+            }
+            // TEMP AI GENERATED DEBUG INFO
+            // 🚨 THE DEEP DECODER
+            uint64_t incremental_post = board.get_zobrist_key();
+            uint64_t hardcalc_post = board.generate_zobrist_key();
+            if (incremental_post != hardcalc_post) {
+                std::cout << "\n--- FATAL ZOBRIST DESYNC ---" << std::endl;
+                std::cout << "Move Made: " << move_to_string(board, move) << " (Flag: " << get_flags(move) << ")" << std::endl;
+                
+                std::cout << "\n--- BOARD BEFORE MOVE ---\n";
+                std::cout << print_board(pre_move_board);
+                
+                std::cout << "\n--- BOARD AFTER MOVE ---\n";
+                std::cout << print_board(board);
+                
+                // Print the raw piece array data for the corrupted square (e.g. b7 = 49)
+                std::cout << "\nPre-move b7 array: " << pre_move_board.get_piece_on_sq(static_cast<Square>(49)) << "\n";
+                std::cout << "Post-move b7 array: " << board.get_piece_on_sq(static_cast<Square>(49)) << "\n";
+                
+                if (!move_exists) std::cout << "GHOST MOVE INJECTED BY PICKER AND PLAYED: " << move_to_string(board, move) << std::endl;
+                uint64_t diff = incremental_post ^ hardcalc_post;
+                std::cout << "\n--- FATAL ZOBRIST DESYNC ---" << std::endl;
+                std::cout << "Move Made: " << move_to_string(board, move) << " (Flag: " << get_flags(move) << ")" << std::endl;
+                
+                bool found = false;
+                
+                // 1. Check for single key corruptions
+                if (diff == zobrist_side) { std::cout << "CORRUPTION: Side to Move\n"; found = true; }
+                for(int i=0; i<16; i++) if(diff == zobrist_castling[i]) { std::cout << "CORRUPTION: Castling Right " << i << "\n"; found = true; }
+                for(int i=0; i<65; i++) if(diff == zobrist_ep[i]) { std::cout << "CORRUPTION: EP Square " << i << "\n"; found = true; }
+                for(int c=0; c<2; c++) for(int p=0; p<6; p++) for(int sq=0; sq<64; sq++) 
+                    if(diff == zobrist_pieces[c][p][sq]) { std::cout << "CORRUPTION: Piece (C:" << c << " P:" << p << " Sq:" << sq << ")\n"; found = true; }
+
+                // 2. Check for DOUBLE key corruptions (e.g. Color Desync, EP math mismatch, Castling mask error)
+                if (!found) {
+                    std::cout << "Running Deep Decode for Multi-Key Desync...\n";
+                    
+                    // Check if it's an EP file vs Exact Square mismatch
+                    for(int ep1=0; ep1<65; ep1++) {
+                        for(int ep2=0; ep2<65; ep2++) {
+                            if (diff == (zobrist_ep[ep1] ^ zobrist_ep[ep2])) {
+                                std::cout << "CORRUPTION: En Passant Mismatch! (EP1: " << ep1 << " vs EP2: " << ep2 << ")\n";
+                                found = true;
+                            }
+                        }
+                    }
+
+                    // Check if it's a Castling Mask mismatch
+                    for(int c1=0; c1<16; c1++) {
+                        for(int c2=0; c2<16; c2++) {
+                            if (diff == (zobrist_castling[c1] ^ zobrist_castling[c2])) {
+                                std::cout << "CORRUPTION: Castling Rights Mismatch! (Right 1: " << c1 << " vs Right 2: " << c2 << ")\n";
+                                found = true;
+                            }
+                        }
+                    }
+
+                    // Check if it's a Piece Color/Square mismatch
+                    for(int c1=0; c1<2; c1++) for(int p1=0; p1<6; p1++) for(int sq1=0; sq1<64; sq1++) {
+                        for(int c2=0; c2<2; c2++) for(int p2=0; p2<6; p2++) for(int sq2=0; sq2<64; sq2++) {
+                            if (diff == (zobrist_pieces[c1][p1][sq1] ^ zobrist_pieces[c2][p2][sq2])) {
+                                std::cout << "CORRUPTION: Piece Sync Error!\n";
+                                std::cout << "   Key A: Color " << c1 << ", Piece " << p1 << ", Sq " << sq1 << "\n";
+                                std::cout << "   Key B: Color " << c2 << ", Piece " << p2 << ", Sq " << sq2 << "\n";
+                                found = true;
+                            }
+                        }
+                    }
+                }
+
+                if (!found) std::cout << "CORRUPTION: 3+ Keys desynced (Massive Bitboard Failure)\n";
+                assert(false && "FATAL ZOBRIST DESYNC CAUGHT");
+            }*/
+            // DELETE TILL HERE
+
             legal_moves++;
             int score;
             if(legal_moves == 1){
@@ -401,16 +421,6 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
                 if(!in_check && (is_quiet || is_bad_capture)){
                     R_LMR = LMR_table[std::min(newdepth,63)][std::min(legal_moves,63)];
                     if(picker.get_current_state() == KILLERS) R_LMR = R_LMR > 0 ? R_LMR - 1 : R_LMR;
-
-                    /*bool is_killer = false;
-                    for(int k = 0; k<NUM_KILLERS; k++){
-                        if(move == killer_moves[ply][k]){
-                            is_killer = true;
-                        }
-                    }
-                    if(is_killer){
-                        R_LMR = (R_LMR > 0) ? R_LMR - 1 : R_LMR;
-                    }*/
                 }
 
                 score = -search<Them>(board, newdepth - R_LMR , -alpha - 1, -alpha, ply + 1);
@@ -466,6 +476,6 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         }
     }
     TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
-    TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), depth, flag, board.get_game_ply());
+    TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), depth, flag, static_cast<uint8_t>(board.get_game_ply() & 0xFF));
     return max_score;
 }

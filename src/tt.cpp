@@ -7,7 +7,7 @@ void TranspositionTable::resize(size_t mb){
     delete[] table;
     table = nullptr;
     size_t target_entries = (mb * 1024 * 1024) / sizeof(TTEntry);
-    
+    if(target_entries == 0) target_entries = 1;
     num_entries = 1;
     while(num_entries <target_entries) num_entries *= 2;
 
