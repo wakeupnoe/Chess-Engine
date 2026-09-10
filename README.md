@@ -26,10 +26,10 @@ Phase 1
 In Between Phase 1.5
 [+] basic UCI Loop
 Phase 2
-[-] Futility Pruning (standard and reverse), late move pruning
+[+] Futility Pruning (standard and reverse), late move pruning
 Phase 3
-[-] Singular Extensions
-[-] Enhanced History heuristic
+[+] Singular Extensions
+[+] Enhanced History heuristic
 In Between Phase 3.5
 [-] Multithreading in UCI loop
 [-] advanced metrics in UCI info

@@ -8,6 +8,7 @@
 #include "utils.h"
 
 extern int history_heuristic[2][64][64];
+extern int counter_move_history[2][64][64][64];
 
 enum MovePickerState : uint8_t {
     TT_MOVE, GENERATE_CAPTURES, GOOD_CAPTURES, KILLERS, GENERATE_QUIETS, QUIETS, BAD_CAPTURES
@@ -45,6 +46,7 @@ private:
     Move tt_move;
     Move killers[2];
     int killer_index;
+    int prev_to;
 
     MoveList captures;
     int captures_index;
@@ -97,17 +99,23 @@ private:
 
             assert(from >= 0 && from < 64 && to >= 0 && to < 64 && "MovePicker: History heuristic out of bounds!");
             
-            quiets.scores[i] = history_heuristic[Us][from][to];
+            int score = history_heuristic[Us][from][to];
+
+            if(prev_to != -1){
+                score += counter_move_history[Us][prev_to][from][to];
+            }
+            quiets.scores[i] = score;
         }
     }
 
 public:
     inline MovePickerState get_current_state(){ return current_state; }
 
-    MovePicker(const Board& b, Move tt, Move killer1, Move killer2)
+    MovePicker(const Board& b, Move tt, Move killer1, Move killer2, int prev_move_to = -1)
         : current_state(TT_MOVE), board(b), tt_move(tt), killer_index(0), captures_index(0), quiets_index(0) {
         killers[0] = killer1;
         killers[1] = killer2;
+        prev_to = prev_move_to;
     }
 
     Move next_move(){

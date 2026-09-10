@@ -27,10 +27,35 @@ inline uint64_t nodes_searched = 0;
 inline int max_seldepth = 0;
 inline Move killer_moves[MAX_PLY][NUM_KILLERS];
 inline int history_heuristic[2][64][64];
+inline int counter_move_history[2][64][64][64];
+
+struct SearchInfo {
+    Move excluded_move = 0;
+    Move move_played = 0;
+};
+
+inline SearchInfo search_stack[MAX_PLY];
+
 
 inline void clear_history_heuristic(){
     std::memset(history_heuristic,0,sizeof(history_heuristic));
 }
+
+inline void clear_counter_move_history(){
+    std::memset(counter_move_history,0,sizeof(counter_move_history));
+}
+
+inline void clear_search_stack(){
+    std::fill(std::begin(search_stack), std::end(search_stack), SearchInfo{});
+}
+
+constexpr int HISTORY_MAX = 16384; // 2^14
+
+inline void update_history(int& entry, int bonus){
+    entry += bonus - (entry * std::abs(bonus)) / HISTORY_MAX;
+}
+
+
 
 // CONTRACT [Root Search]:
 // - ASSUMES: The board has a King for the side to move (Us).
@@ -45,6 +70,8 @@ Move get_best_move(Board& board, int target_depth){
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     Move best_move_overall = 0;
     clear_history_heuristic();
+    clear_counter_move_history();
+    clear_search_stack();
     nodes_searched = 0;
     max_seldepth = 0;
 
@@ -69,7 +96,7 @@ Move get_best_move(Board& board, int target_depth){
             int alpha = window_alpha;
             int beta = window_beta;
 
-            MovePicker<Us> picker(board, tt_move, killer_moves[0][0], killer_moves[0][1]);
+            MovePicker<Us> picker(board, tt_move, killer_moves[0][0], killer_moves[0][1]); // do not use Coutermovehistory, so prev_to is defaulted to -1
             Move move;
             
             while((move = picker.next_move()) != 0){
@@ -209,7 +236,7 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
     
     int max_score = standard_pat;
     Move best_move = 0;
-    MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1]);
+    MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1]); // prev_to is defaulted to -1
     Move move;
     while((move = picker.next_move()) != 0){
         if(picker.get_current_state() > GOOD_CAPTURES) break; // makes sense?
@@ -272,15 +299,27 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     if(depth <= 0){ // originally "==", but LMR might lead to negative depth
         return quiescence_search<Us>(board, alpha, beta, ply);
     }
-    
+    int extension = 0;
+    // TT probe
     if(tt_entry != nullptr){
         tt_move = tt_entry->move;
         int tt_score = score_from_tt(tt_entry->score, ply);
-        if(tt_entry->depth >= depth || (std::abs(tt_score) > MATE_SCORE - 100)){
+        int tt_depth = tt_entry->depth;
+        if(tt_depth >= depth || (std::abs(tt_score) > MATE_SCORE - 100)){
             //cutoff?
             if(tt_entry->flag == TT_EXACT) return tt_score;
             if(tt_entry->flag == TT_ALPHA && tt_score <= alpha) return tt_score;
             if(tt_entry->flag == TT_BETA && tt_score >= beta) return tt_score;
+        }
+
+        // singular extension
+        if(search_stack[ply].excluded_move == 0 && tt_move != 0 && tt_depth >= depth - 3 && tt_entry->flag != TT_ALPHA && std::abs(tt_score) < MATE_SCORE - 100) {
+            int singular_beta = tt_score - (depth * 2);
+            int exclusion_depth = (depth -1) / 2;
+            search_stack[ply].excluded_move = tt_move;
+            int exclusion_score = search<Us>(board, exclusion_depth, singular_beta - 1, singular_beta, ply);
+            search_stack[ply].excluded_move = 0;
+            if(exclusion_score < singular_beta) extension = 1;
         }
     }
 
@@ -321,11 +360,18 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
 
     constexpr int LMP_MAX_DEPTH = 4;
     
-    
-    // score_moves<Us>(list, board, ply, tt_move);
-    MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1]);
+    Move prev_move = (ply > 0) ? search_stack[ply - 1].move_played : 0;
+    int prev_to = (prev_move != 0) ? get_to_sq(prev_move) : -1;
+
+    MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1], prev_to);
     Move move;
+
+    Move quiet_searched[64];
+    int num_quiets = 0;
+
+
     while((move = picker.next_move()) != 0){
+        if(move == search_stack[ply].excluded_move) continue; // part of singular extension
         int flag = get_flags(move);
         bool is_quiet = flag <= 3;
         bool is_capture = flag == 4 || flag == 5 || flag >= 12;
@@ -359,8 +405,100 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             }
         }
 
+        search_stack[ply].move_played = move;
         if(board.make_move<Us>(move)){
-            /*if (!move_exists) {
+            legal_moves++;
+            int score;
+
+            int current_depth = newdepth + (move==tt_move ? extension : 0);
+
+            if(legal_moves == 1){
+                // PV move
+                score = -search<Them>(board, current_depth, -beta, -alpha, ply + 1);
+            } else {
+                int R_LMR = 0;
+
+                if(!in_check && (is_quiet || is_bad_capture)){
+                    R_LMR = LMR_table[std::min(current_depth,63)][std::min(legal_moves,63)];
+                    if(picker.get_current_state() == KILLERS) R_LMR = R_LMR > 0 ? R_LMR - 1 : R_LMR;
+                }
+
+                score = -search<Them>(board, current_depth - R_LMR , -alpha - 1, -alpha, ply + 1);
+
+                if(score > alpha && R_LMR > 0){
+                    score = -search<Them>(board, current_depth, -alpha -1, -alpha, ply + 1);
+                }
+
+                if(score > alpha && score < beta){
+                    score = -search<Them>(board, current_depth, -beta, -alpha, ply + 1);
+                }
+            }
+
+            board.unmake_move<Us>(move);
+            best_move = (score > max_score ? move : best_move);
+            max_score = std::max(score, max_score);
+            if(beta <= max_score){
+                if(is_quiet){
+                    // killer moves
+                    bool duplicate = false;
+                    for(int k = 0; k<NUM_KILLERS; k++){
+                        if(killer_moves[ply][k] == move){
+                            duplicate = true;
+                            break;
+                        }
+                    }
+                    if(!duplicate){
+                        for(int k = NUM_KILLERS - 1; k>0; k--){
+                            killer_moves[ply][k] = killer_moves[ply][k-1];
+                        }
+                        killer_moves[ply][0] = move;
+                    }
+
+                    // history heuristic
+                    int bonus = std::min(current_depth * current_depth, 400);
+
+                    int from = get_from_sq(move);
+                    int to = get_to_sq(move);
+                    // reward move that caused cutoff
+                    update_history(history_heuristic[Us][from][to], bonus);
+                    if(prev_to != -1) update_history(counter_move_history[Us][prev_to][from][to], bonus);
+                    //punish moves that failed earlier
+                    for(int i = 0; i<num_quiets; i++){
+                        Move penalty_move = quiet_searched[i];
+                        int p_from = get_from_sq(penalty_move);
+                        int p_to = get_to_sq(penalty_move);
+                        update_history(history_heuristic[Us][p_from][p_to], -bonus);
+                        if(prev_to != -1) update_history(counter_move_history[Us][prev_to][p_from][p_to], -bonus);
+
+                    }
+
+
+                }
+
+                break; // beta cutoff
+            }
+            alpha = std::max(alpha, max_score);
+
+            if(is_quiet && num_quiets < 64){
+                quiet_searched[num_quiets++] = move;
+            }
+        }
+    }
+    if(legal_moves == 0){
+        int kingSq = lsb(board.get_pieces(Us,KING));
+        if(is_square_attacked<Them>(static_cast<Square>(kingSq), board)){
+            max_score = - MATE_SCORE + ply; //checkmate
+        } else {
+            max_score = 0; //Stalemate
+        }
+    }
+    TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
+    TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), depth, flag, static_cast<uint8_t>(board.get_game_ply() & 0xFF));
+    return max_score;
+}
+
+
+/*if (!move_exists) {
                 std::cout << "GHOST MOVE INJECTED BY PICKER AND PLAYED: " << move_to_string(board, move) << std::endl;
                 //exit(1);
                 assert(false && "GHOST MOVE INJECTED BY PICKER AND PLAYED");
@@ -438,73 +576,3 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
                 assert(false && "FATAL ZOBRIST DESYNC CAUGHT");
             }*/
             // DELETE TILL HERE
-
-            legal_moves++;
-            int score;
-            if(legal_moves == 1){
-                // PV move
-                score = -search<Them>(board, newdepth, -beta, -alpha, ply + 1);
-            } else {
-                int R_LMR = 0;
-
-                if(!in_check && (is_quiet || is_bad_capture)){
-                    R_LMR = LMR_table[std::min(newdepth,63)][std::min(legal_moves,63)];
-                    if(picker.get_current_state() == KILLERS) R_LMR = R_LMR > 0 ? R_LMR - 1 : R_LMR;
-                }
-
-                score = -search<Them>(board, newdepth - R_LMR , -alpha - 1, -alpha, ply + 1);
-
-                if(score > alpha && R_LMR > 0){
-                    score = -search<Them>(board, newdepth, -alpha -1, -alpha, ply + 1);
-                }
-
-                if(score > alpha && score < beta){
-                    score = -search<Them>(board, newdepth, -beta, -alpha, ply + 1);
-                }
-            }
-
-            board.unmake_move<Us>(move);
-            best_move = (score > max_score ? move : best_move);
-            max_score = std::max(score, max_score);
-            if(beta <= max_score){
-                //int flag = get_flags(move);
-
-                if(is_quiet){
-                    // killer moves
-                    bool duplicate = false;
-                    for(int k = 0; k<NUM_KILLERS; k++){
-                        if(killer_moves[ply][k] == move){
-                            duplicate = true;
-                            break;
-                        }
-                    }
-                    if(!duplicate){
-                        for(int k = NUM_KILLERS - 1; k>0; k--){
-                            killer_moves[ply][k] = killer_moves[ply][k-1];
-                        }
-                        killer_moves[ply][0] = move;
-                    }
-
-                    // history heuristic
-                    int from = get_from_sq(move);
-                    int to = get_to_sq(move);
-                    history_heuristic[Us][from][to] += depth*depth;
-                }
-
-                break; // beta cutoff
-            }
-            alpha = std::max(alpha, max_score);
-        }
-    }
-    if(legal_moves == 0){
-        int kingSq = lsb(board.get_pieces(Us,KING));
-        if(is_square_attacked<Them>(static_cast<Square>(kingSq), board)){
-            max_score = - MATE_SCORE + ply; //checkmate
-        } else {
-            max_score = 0; //Stalemate
-        }
-    }
-    TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
-    TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), depth, flag, static_cast<uint8_t>(board.get_game_ply() & 0xFF));
-    return max_score;
-}
