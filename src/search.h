@@ -137,6 +137,7 @@ Move get_best_move(Board& board, int target_depth){
 
             if(max_score >= window_beta && window_beta < INFINITY_SCORE){ // doing better than expected
                 window_beta = INFINITY_SCORE;
+                tt_move = current_best_move;
                 continue;
             }
 
@@ -176,23 +177,27 @@ Move get_best_move(Board& board, int target_depth){
                 << " time " << time_ms
                 << " pv ";
         /**/
-        Board temp_board = board;
-        for(int i = 0; i< 64; i++){
-            TTEntry* entry = TT.probe(temp_board.get_zobrist_key());
-            if(entry != nullptr && entry->move!=0){
-                Move pv_move = entry->move;
-                Color c = temp_board.get_side_to_move();
-                bool is_valid = (c == WHITE) ? is_pseudo_legal<WHITE>(temp_board, pv_move) :  is_pseudo_legal<BLACK>(temp_board, pv_move);
-                if(!is_valid) break;
-                std::cout << move_to_string(temp_board, pv_move) << " ";
-                bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(pv_move) : temp_board.make_move<BLACK>(pv_move);
-                if(!legal) break;
-            } else {
-                break;
+        if(current_best_move != 0){
+            std::cout << move_to_string(board,current_best_move) << " ";
+            Board temp_board = board;
+            if(Us == WHITE) temp_board.make_move<WHITE>(current_best_move);
+            else temp_board.make_move<BLACK>(current_best_move);
+            for(int i = 0; i<63; i++){
+                TTEntry* entry = TT.probe(temp_board.get_zobrist_key());
+                if(entry != nullptr && entry->move != 0){
+                    Move pv_move = entry->move;
+                    Color c = temp_board.get_side_to_move();
+
+                    bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(pv_move) : temp_board.make_move<BLACK>(pv_move);
+                    if(!legal) break;
+                    std::cout << move_to_string(board,pv_move) << " ";
+                } else {
+                    break;
+                }
             }
+            
         }
         std::cout << std::endl;
-
         if(prev_score > MATE_SCORE - 100){
             break; // forced mate detected
         }

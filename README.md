@@ -17,7 +17,7 @@ A competitive C++ Chess engine.
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
 - Mate in 8 and 10 solved, not tested extensivly
-- ~8M NPS in Play
+- ~6M NPS in Play
 
 ## Next steps
 Phase 1
