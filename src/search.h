@@ -120,8 +120,22 @@ Move get_best_move(Board& board, int target_depth){
 
             MovePicker<Us> picker(board, tt_move, killer_moves[0][0], killer_moves[0][1]); // do not use Coutermovehistory, so prev_to is defaulted to -1
             Move move;
-            
+            int move_number = 1;
             while((move = picker.next_move()) != 0){
+
+                // advanced UCI metrics at high depths
+                if(current_depth > 17){
+                    auto now = std::chrono::steady_clock::now();
+                    std::chrono::duration<double, std::milli> elapsed = now - start_time;
+
+                    std::cout << "info depth " << current_depth
+                              << " currmove " << move_to_string(board, move)
+                              << " currmovenumber " << move_number
+                              << " time " << static_cast<int>(elapsed.count() * 1000)
+                              << " nodes " << nodes_searched
+                              << std::endl;
+                }
+
                 if(board.make_move<Us>(move)){
                     legal_moves++;
                     int score;
@@ -144,6 +158,7 @@ Move get_best_move(Board& board, int target_depth){
                         break;
                     }
                 }
+                move_number++;
             }
 
             if(legal_moves == 0){
@@ -215,9 +230,10 @@ Move get_best_move(Board& board, int target_depth){
                     Move pv_move = entry->move;
                     Color c = temp_board.get_side_to_move();
 
+                    std::cout << move_to_string(temp_board,pv_move) << " ";
+
                     bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(pv_move) : temp_board.make_move<BLACK>(pv_move);
                     if(!legal) break;
-                    std::cout << move_to_string(temp_board,pv_move) << " ";
                 } else {
                     break;
                 }
