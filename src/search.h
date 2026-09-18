@@ -10,6 +10,28 @@
 #include <cstring>
 #include <iostream>
 #include <chrono>
+#include <atomic> // for multithreading
+#include <thread> // for multithreading
+
+struct TimeManager {
+    bool time_control_enabled = false;
+    std::chrono::time_point<std::chrono::steady_clock> start_time;
+    int soft_limit = 0;
+    int hard_limit = 0;
+};
+extern std::atomic<bool> abort_search;
+extern TimeManager TM;
+
+
+inline void check_time(){
+    if(!TM.time_control_enabled) return;
+    auto current_time = std::chrono::steady_clock::now();
+    std::chrono::duration<double, std::milli> elapsed = current_time - TM.start_time;
+    if(elapsed.count() >= TM.hard_limit){
+        abort_search = true;
+    }
+}
+
 
 // CONTRACT [Search Globals & Limits]:
 // - ASSUMES: Search ply NEVER exceeds MAX_PLY (128). Accessing killer_moves at ply >= 128 is a fatal overflow.
@@ -141,9 +163,14 @@ Move get_best_move(Board& board, int target_depth){
                 continue;
             }
 
-
+            if(abort_search){
+                break;
+            }
             prev_score = max_score;
             best_move_overall = current_best_move;
+            break;
+        }
+        if(abort_search){
             break;
         }
 
@@ -190,7 +217,7 @@ Move get_best_move(Board& board, int target_depth){
 
                     bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(pv_move) : temp_board.make_move<BLACK>(pv_move);
                     if(!legal) break;
-                    std::cout << move_to_string(board,pv_move) << " ";
+                    std::cout << move_to_string(temp_board,pv_move) << " ";
                 } else {
                     break;
                 }
@@ -200,6 +227,11 @@ Move get_best_move(Board& board, int target_depth){
         std::cout << std::endl;
         if(prev_score > MATE_SCORE - 100){
             break; // forced mate detected
+        }
+        if(TM.time_control_enabled){
+            auto current_time = std::chrono::steady_clock::now();
+            std::chrono::duration<double, std::milli> elapsed = current_time - TM.start_time;
+            if(elapsed.count() >= (TM.soft_limit * 0.8)) break;
         }
     }
     return best_move_overall;
@@ -212,6 +244,12 @@ Move get_best_move(Board& board, int target_depth){
 template <Color Us>
 int quiescence_search(Board& board, int alpha, int beta, int ply){
     assert(ply >= 0 && ply < MAX_PLY && "qsearch: Ply out of bounds!");
+
+    if((nodes_searched & 2047) == 0){
+        check_time();
+    }
+    
+    if(abort_search) return 0;
 
     nodes_searched++;
     max_seldepth = std::max(max_seldepth, ply);
@@ -263,10 +301,10 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
             }
         }
     }
-
-    TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
-    TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), 0, flag, board.get_game_ply());
-    
+    if(!abort_search){
+        TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
+        TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), 0, flag, board.get_game_ply());
+    }
     return max_score;
 }
 
@@ -281,6 +319,12 @@ template <Color Us>
 int search(Board& board, int depth, int alpha, int beta, int ply){
     assert(ply >= 0 && ply < MAX_PLY && "search: Ply out of bounds!");
     assert(board.get_pieces(Us, KING) != 0ULL && "search: Board has no King!");
+
+    if((nodes_searched & 2047) == 0){
+        check_time();
+    }
+    
+    if(abort_search) return 0;
 
     //TEMP DEBUGGING: // AI GENERATED
     // uint64_t pre_move_key = board.get_zobrist_key();
@@ -497,8 +541,10 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
             max_score = 0; //Stalemate
         }
     }
-    TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
-    TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), depth, flag, static_cast<uint8_t>(board.get_game_ply() & 0xFF));
+    if(!abort_search){
+        TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
+        TT.store(board.get_zobrist_key(), best_move, score_to_tt(max_score, ply), depth, flag, static_cast<uint8_t>(board.get_game_ply() & 0xFF));
+    }
     return max_score;
 }
 

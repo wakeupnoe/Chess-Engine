@@ -1,6 +1,10 @@
 #include "search.h"
 #include <cmath>
 
+
+std::atomic<bool> abort_search = false;
+TimeManager TM;
+
 int LMR_table[64][64];
 
 void init_lmr_table(){

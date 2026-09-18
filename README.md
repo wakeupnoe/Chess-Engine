@@ -31,11 +31,11 @@ Phase 3
 [+] Singular Extensions
 [+] Enhanced History heuristic
 In Between Phase 3.5
-[-] Multithreading in UCI loop
+[+] Multithreading in UCI loop
 [-] advanced metrics in UCI info
-[-] Time mangement in UCI loop
+[+] Time mangement in UCI loop
 Phase 4
-[-] NNUE integration
+[-] NNUE integration?
 [-] Lazy SMP
 [-] Automated tuning of hyperparameters?
 
