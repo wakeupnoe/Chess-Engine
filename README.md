@@ -20,11 +20,12 @@ A competitive C++ Chess engine.
 - Basic UCI support (metrics etc.)
 - Lazy SMP
 - NNUE integrted (Stockfish 12 weights)
+- ~2500 lines of code
 
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
 - Mate in 8 and 10 solved, not tested extensivly
-- ~6M NPS in Play
+- ~6M NPS in Play on 8 threads
 - first estimation of strength: ~2600 elo
 
 ## Next steps
