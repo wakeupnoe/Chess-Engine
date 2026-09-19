@@ -13,6 +13,13 @@ A competitive C++ Chess engine.
 - Quiescence search
 - history heuristic & Null pointer pruning
 - PVS & LMR and Aspiartion Windows
+- Static exchange evaluation
+- Move picker state machine
+- Futility Pruning (standard and reverse), late move pruning
+- Singular Extensions, Enhanced History heuristic (counter moves)
+- Basic UCI support (metrics etc.)
+- Lazy SMP
+- NNUE integrted (Stockfish 12 weights)
 
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
@@ -21,24 +28,7 @@ A competitive C++ Chess engine.
 - first estimation of strength: ~2600 elo
 
 ## Next steps
-Phase 1
-[+] SEE
-[+] MovePicker state machine
-In Between Phase 1.5
-[+] basic UCI Loop
-Phase 2
-[+] Futility Pruning (standard and reverse), late move pruning
-Phase 3
-[+] Singular Extensions
-[+] Enhanced History heuristic
-In Between Phase 3.5
-[+] Multithreading in UCI loop
-[+] advanced metrics in UCI info (options omitted)
-[+] Time mangement in UCI loop
-Phase 4
-[+] Lazy SMP
-Phase 5
-[+] NNUE integration! (stockfish 12)
+- Test, improve, possibly generate own .nnue file
 
 ## Meta-Plan
 [ ] Set up automatic testing environment via GitHub-Actions
@@ -49,5 +39,6 @@ Use of AI in:
 
 ## Plan for the Engine
 - Highly optimized low level operations
-- Mini-Max Search up until a certain depth (with Alpha-Beta pruning, quincent search, move ordering)
-- evaluation via hard coded heuristic (later via NNUE)
+- Alpha-Beta pruning (pruned to the death)
+- evaluation via NNUE
+- 2500 elo+
