@@ -18,6 +18,7 @@ A competitive C++ Chess engine.
 - Perft runs at ~75M NPS (without Bulk Counting)
 - Mate in 8 and 10 solved, not tested extensivly
 - ~6M NPS in Play
+- first estimation of strength: ~2600 elo
 
 ## Next steps
 Phase 1
@@ -32,12 +33,12 @@ Phase 3
 [+] Enhanced History heuristic
 In Between Phase 3.5
 [+] Multithreading in UCI loop
-[-] advanced metrics in UCI info
+[+] advanced metrics in UCI info (options omitted)
 [+] Time mangement in UCI loop
 Phase 4
-[-] NNUE integration?
-[-] Lazy SMP
-[-] Automated tuning of hyperparameters?
+[+] Lazy SMP
+Phase 5
+[+] NNUE integration! (stockfish 12)
 
 ## Meta-Plan
 [ ] Set up automatic testing environment via GitHub-Actions

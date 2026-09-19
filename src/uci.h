@@ -22,7 +22,8 @@ Move parse_move(const Board& board, const std::string& move_str){
         if(move_to_string(board,move) == move_str){
             bool is_legal = false;
             Board copy = board;
-            is_legal = copy.make_move<Us>(move);
+            Accumulator dummy_accs[2];
+            is_legal = copy.make_move<Us>(move,dummy_accs[0], dummy_accs[1]);
             if(is_legal) return move;
         }
     }

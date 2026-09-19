@@ -7,7 +7,6 @@ extern TimeManager TM;
 extern std::atomic<bool> abort_search;
 
 namespace UCI {
-    //std::thread search_thread;
     std::vector<std::thread> search_threads;
     int num_threads = 8;
 
@@ -49,6 +48,23 @@ namespace UCI {
                 std::cout << "uciok" << std::endl;   
             } else if(token == "isready"){
                 std::cout << "readyok" << std::endl;
+            } else if(token == "eval"){
+                refresh_accumulators(board, accumulators[0]);
+                Color stm = board.get_side_to_move();
+                int score_stm = 0;
+                if(stm == WHITE){
+                    score_stm = nnue_evaluate<WHITE>(accumulators[0]);
+                } else {
+                    score_stm = nnue_evaluate<BLACK>(accumulators[0]);
+                }
+                int score_white = (stm == WHITE) ? score_stm : - score_stm;
+                std::cout << "----------------------------------------" << std::endl;
+                std::cout << "Side to move : " << (stm == WHITE ? "White" : "Black") << std::endl;
+                std::cout << "NNUE (stm)   : " << score_stm << " cp (" 
+                        << std::showpos << (score_stm / 100.0) << " pawns)" << std::noshowpos << std::endl;
+                std::cout << "NNUE (white) : " << score_white << " cp (" 
+                        << std::showpos << (score_white / 100.0) << " pawns)" << std::noshowpos << std::endl;
+                std::cout << "----------------------------------------" << std::endl;
             } else if(token == "ucinewgame"){
                     TT.clear();
                     clear_history_heuristic();
@@ -69,11 +85,12 @@ namespace UCI {
                     while(iss >> token){
 
                         Move move = (board.get_side_to_move() == WHITE) ? parse_move<WHITE>(board, token) : parse_move<BLACK>(board, token);
+                        Accumulator dummy_accs[2];
                         if(move != 0){
                             if(board.get_side_to_move() == WHITE){
-                                board.make_move<WHITE>(move);
+                                board.make_move<WHITE>(move, dummy_accs[0], dummy_accs[1]);
                             } else {
-                                board.make_move<BLACK>(move);
+                                board.make_move<BLACK>(move, dummy_accs[0], dummy_accs[1]);
                             }
                         }
                     }

@@ -94,7 +94,7 @@ const int mg_king_table[64] = {
 
 
 template <Color Us>
-int evaluate(Board& board) {
+int evaluated(Board& board) { // instead of evaluate(without 'd') to test if we are using nnue.
     constexpr Color Them = (Us == WHITE) ? BLACK : WHITE;
     int score = 0;
 

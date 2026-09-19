@@ -1,5 +1,5 @@
 add_library(EngineLib STATIC
-    AIPerft.cpp
+    #AIPerft.cpp
     attacks.cpp
     bitboard.cpp
     board.cpp
@@ -10,6 +10,7 @@ add_library(EngineLib STATIC
     see.cpp
     uci.cpp
     tt.cpp
+    nnue.cpp
     zobrist.cpp
 )
 

@@ -49,7 +49,7 @@ inline constexpr uint8_t CASTLING_MASK[64] = {
      7, 15, 15, 15,  3, 15, 15, 11,
 };
 
-struct alignas(16) StateInfo {                                                              //  optimal for padding    
+struct alignas(16) StateInfo {                                                  //  optimal for padding    
     Bitboard Zobrist_Key = 0ULL; //Incremental Zobrist Hash Key                 //  8 bytes
     uint8_t castling_rights = 15; //Castling Rights last 4 bits 1 1 1 1         //  1 byte
     Square En_Passant_Target_Square = NO_SQUARE; // En Passant Target Square    //  1 byte
@@ -61,20 +61,12 @@ struct alignas(16) StateInfo {                                                  
 enum File : uint8_t {
     FILE_A, FILE_B, FILE_C, FILE_D, FILE_E, FILE_F, FILE_G, FILE_H
 };
-//enum Rank : uint8_t {
-//    RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8
-//};
-
 
 enum TTFlag : uint8_t {
     TT_NONE = 0, TT_EXACT = 1, TT_ALPHA = 2, TT_BETA = 3
 };
-/*
-struct TTEntry{
-    uint64_t key; // zobrist key for collision detection
-    Move move; // best move found
-    int16_t score;
-    uint8_t depth;
-    uint8_t flag;
-    uint8_t age;
-};*/
+
+struct Accumulator {
+    int16_t white[256]; // LAYER_0_SIZE
+    int16_t black[256];
+};

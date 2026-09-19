@@ -7,6 +7,7 @@
 #include "see.h"
 #include "tt.h"
 #include "move_picker.h"
+#include "nnue.h"
 #include <cstring>
 #include <iostream>
 #include <chrono>
@@ -57,8 +58,57 @@ struct SearchInfo {
 inline std::atomic<uint64_t> nodes_searched = 0;
 inline thread_local int local_counter = 0;
 
+inline thread_local Accumulator accumulators[MAX_PLY];
 inline thread_local SearchInfo search_stack[MAX_PLY];
 inline thread_local int max_seldepth = 0;
+
+template <Color King_color>
+inline void refresh_single_accumulator(Board& board, Accumulator& acc){
+    if constexpr (King_color == WHITE){
+        for(int i = 0; i< LAYER_0_SIZE; i++) acc.white[i] = nnue.feature_weights.biases[i];
+    } else {
+        for(int i = 0; i< LAYER_0_SIZE; i++) acc.black[i] = nnue.feature_weights.biases[i];
+    }
+    Square king_sq = static_cast<Square>(lsb(board.get_pieces(King_color,KING)));
+
+    for(int color = WHITE; color <= BLACK; color++){
+        for(int piece = PAWN; piece<= QUEEN; piece++){
+            Bitboard bitboard = board.get_pieces(static_cast<Color>(color),static_cast<Piece>(piece));
+            while(bitboard){
+                Square sq = static_cast<Square>(pop_lsb(bitboard));
+                int idx = get_halfkp_index(King_color, king_sq, sq,static_cast<Piece>(piece), static_cast<Color>(color));
+                if constexpr (King_color == WHITE){
+                    for(int i = 0; i<LAYER_0_SIZE; i++) acc.white[i] += nnue.feature_weights.weights[idx][i];
+                } else {
+                    for(int i = 0; i<LAYER_0_SIZE; i++) acc.black[i] += nnue.feature_weights.weights[idx][i];
+                }
+            }
+        }
+    }
+}
+
+inline void refresh_accumulators(Board& board, Accumulator& acc){
+    refresh_single_accumulator<WHITE>(board,acc);
+    refresh_single_accumulator<BLACK>(board,acc);
+}
+
+
+inline void update_accumulator_piece(Accumulator& acc, Color piece_color, Piece piece_type, Square sq, int weight_sign, Square white_king_sq, Square black_king_sq){
+    if(piece_type == KING) return;
+    int w_idx = get_halfkp_index(WHITE,white_king_sq, sq, piece_type, piece_color);
+    int b_idx = get_halfkp_index(BLACK,black_king_sq, sq, piece_type, piece_color);
+    if(weight_sign > 0){
+        for(int i = 0; i<LAYER_0_SIZE; i++){
+            acc.white[i] += nnue.feature_weights.weights[w_idx][i];
+            acc.black[i] += nnue.feature_weights.weights[b_idx][i];
+        }
+    } else {
+        for(int i = 0; i<LAYER_0_SIZE; i++){
+            acc.white[i] -= nnue.feature_weights.weights[w_idx][i];
+            acc.black[i] -= nnue.feature_weights.weights[b_idx][i];
+        }
+    }
+}
 
 
 inline void clear_history_heuristic(){
@@ -80,6 +130,40 @@ inline void update_history(int& entry, int bonus){
 }
 
 
+/*
+inline void check_accumulator_desync(Board& board, int ply) {
+    Accumulator fresh_acc;
+    
+    // 1. Build a brand new accumulator from scratch
+    for (int i = 0; i < LAYER_0_SIZE; i++) {
+        fresh_acc.white[i] = nnue.feature_weights.biases[i];
+        fresh_acc.black[i] = nnue.feature_weights.biases[i];
+    }
+    
+    Square w_king = static_cast<Square>(lsb(board.get_pieces(WHITE, KING)));
+    Square b_king = static_cast<Square>(lsb(board.get_pieces(BLACK, KING)));
+
+    for (int color = WHITE; color <= BLACK; color++) {
+        for (int piece = PAWN; piece <= QUEEN; piece++) {
+            Bitboard bitboard = board.get_pieces(static_cast<Color>(color), static_cast<Piece>(piece));
+            while (bitboard) {
+                Square sq = static_cast<Square>(pop_lsb(bitboard));
+                int w_idx = get_halfkp_index(WHITE, w_king, sq, static_cast<Piece>(piece), static_cast<Color>(color));
+                int b_idx = get_halfkp_index(BLACK, b_king, sq, static_cast<Piece>(piece), static_cast<Color>(color));
+                for (int i = 0; i < LAYER_0_SIZE; i++) {
+                    fresh_acc.white[i] += nnue.feature_weights.weights[w_idx][i];
+                    fresh_acc.black[i] += nnue.feature_weights.weights[b_idx][i];
+                }
+            }
+        }
+    }
+
+    // 2. Compare against the incremental one
+    for (int i = 0; i < LAYER_0_SIZE; i++) {
+        assert(accumulators[ply].white[i] == fresh_acc.white[i] && "CRITICAL: White Accumulator Desync!");
+        assert(accumulators[ply].black[i] == fresh_acc.black[i] && "CRITICAL: Black Accumulator Desync!");
+    }
+}*/
 
 // CONTRACT [Root Search]:
 // - ASSUMES: The board has a King for the side to move (Us).
@@ -96,6 +180,8 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
     clear_search_stack();
     max_seldepth = 0;
 
+    refresh_accumulators(board,accumulators[0]);
+
     auto start_time = std::chrono::steady_clock::now();
     int prev_score = 0;
     int king_sq = lsb(board.get_pieces(Us, KING));
@@ -110,7 +196,6 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
     uint8_t tt_age= 0;
 
     for(int current_depth = 1; current_depth <= actual_target; current_depth++){
-        //std::cout << "DEBUG searching at depth " << current_depth << std::endl; 
         int window_alpha = current_depth==1 ?  -INFINITY_SCORE : std::max(-INFINITY_SCORE, prev_score - 50);
         int window_beta = current_depth==1 ?  INFINITY_SCORE : std::min(INFINITY_SCORE, prev_score + 50);
         
@@ -139,12 +224,12 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
                     std::cout << "info depth " << current_depth
                               << " currmove " << move_to_string(board, move)
                               << " currmovenumber " << move_number
-                              << " time " << static_cast<int>(elapsed.count() * 1000)
+                              << " time " << static_cast<int>(elapsed.count())
                               << " nodes " << nodes_searched
                               << std::endl;
                 }
 
-                if(board.make_move<Us>(move)){
+                if(board.make_move<Us>(move, accumulators[0], accumulators[1])){
                     legal_moves++;
                     int score;
                     if(legal_moves == 1){
@@ -218,7 +303,6 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
             }
             
             // UCI type output
-            /**/
             std::cout << "info depth " << current_depth
             << " seldepth " << max_seldepth
             << " score " << score_string
@@ -227,13 +311,12 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
             << " hashfull " << hashfull
             << " time " << time_ms
             << " pv ";
-            /**/
             if(current_best_move != 0){
                 std::cout << move_to_string(board,current_best_move) << " ";
                 Board temp_board = board;
-                if(Us == WHITE) temp_board.make_move<WHITE>(current_best_move);
-                else temp_board.make_move<BLACK>(current_best_move);
-                for(int i = 0; i<63; i++){
+                if(Us == WHITE) temp_board.make_move<WHITE>(current_best_move, accumulators[0], accumulators[1]);
+                else temp_board.make_move<BLACK>(current_best_move, accumulators[0], accumulators[1]);
+                for(int i = 1; i<63; i++){
                     bool tt_hit = TT.probe(temp_board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
 
                     if(tt_hit && tt_move != 0){
@@ -241,7 +324,7 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
                         
                         std::cout << move_to_string(temp_board,tt_move) << " ";
                         
-                        bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(tt_move) : temp_board.make_move<BLACK>(tt_move);
+                        bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(tt_move, accumulators[i], accumulators[i+1]) : temp_board.make_move<BLACK>(tt_move, accumulators[i], accumulators[i+1]);
                         if(!legal) break;
                     } else {
                         break;
@@ -281,9 +364,7 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
 
     local_counter++;
     max_seldepth = std::max(max_seldepth, ply);
-    // board.check_state_integrity();
-    int standard_pat = evaluate<Us>(board);
-    // board.check_state_integrity();
+    int standard_pat = nnue_evaluate<Us>(accumulators[ply]);
     if(ply >= MAX_PLY - 1) return standard_pat;
 
     if(standard_pat >= beta) return beta;
@@ -319,7 +400,7 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
         bool is_quiet = flag <= 3;
         if(is_quiet) continue;
         
-        if(board.make_move<Us>(move)){
+        if(board.make_move<Us>(move, accumulators[ply], accumulators[ply+1])){
             // board.check_state_integrity();
             int score = -quiescence_search<Them>(board, -beta, -alpha, ply + 1);
             // board.check_state_integrity();
@@ -362,7 +443,7 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
 
     local_counter++;
     if(board.is_draw()) return 0; // "ply > 0 &&" important if we remove root search function
-    if(ply >= MAX_PLY - 1) return evaluate<Us>(board);
+    if(ply >= MAX_PLY - 1) return nnue_evaluate<Us>(accumulators[ply]);
     
     int original_alpha = alpha;
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
@@ -405,7 +486,8 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     }
 
     // For Reverse Futility Pruning: evalute board
-    int board_evaluation = evaluate<Us>(board);
+    // check_accumulator_desync(board, ply);
+    int board_evaluation = nnue_evaluate<Us>(accumulators[ply]);
     constexpr int RFP_MAX_DEPTH = 3;
     constexpr int BASE_MARGIN = 50;
     constexpr int MARGIN_MULTIPLIER = 100;
@@ -416,9 +498,9 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     }
 
     // Null-Move Pruning
-    constexpr int R = 2; // Depth reduction if we are safe?
+    constexpr int R = 2; // Depth reduction if we are safe
     if(!in_check && depth >= 3 && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
-        board.make_null_move<Us>();
+        board.make_null_move<Us>(accumulators[ply], accumulators[ply+1]);
         
         int null_score = -search<Them>(board, newdepth - R, -beta, -beta + 1, ply + 1);
         board.unmake_null_move<Us>();
@@ -431,8 +513,6 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     if (tt_move == 0 && depth >= 4 && !in_check){
         search<Us>(board, depth - 2, alpha, beta, ply); // just to populate the TT table (with a shallow search)
         tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
-        //tt_entry = TT.probe(board.get_zobrist_key());
-        //if(tt_entry != nullptr) tt_move = tt_entry->move;
     }
 
     
@@ -459,15 +539,7 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         bool is_capture = flag == 4 || flag == 5 || flag >= 12;
         
         bool is_bad_capture = (picker.get_current_state() == BAD_CAPTURES);
-        
-        // AI GENERATED DEBUG INFO
-        /*MoveList test_list = generate_quiets<Us>(board);
-        MoveList test_caps = generate_captures<Us>(board);
-        bool move_exists = false;
-        for(int i = 0; i < test_list.size(); i++) if(test_list.get(i) == move) move_exists = true;
-        for(int i = 0; i < test_caps.size(); i++) if(test_caps.get(i) == move) move_exists = true;
-        Board pre_move_board = board;
-        */
+
         constexpr int FP_MAX_DEPTH = 4;
         constexpr int FP_BASE_MARGIN = 100;
         constexpr int FP_MARGIN_MULTIPLIER = 100;
@@ -488,7 +560,7 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         }
 
         search_stack[ply].move_played = move;
-        if(board.make_move<Us>(move)){
+        if(board.make_move<Us>(move, accumulators[ply], accumulators[ply+1])){
             legal_moves++;
             int score;
 
@@ -580,83 +652,3 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     }
     return max_score;
 }
-
-
-/*if (!move_exists) {
-                std::cout << "GHOST MOVE INJECTED BY PICKER AND PLAYED: " << move_to_string(board, move) << std::endl;
-                //exit(1);
-                assert(false && "GHOST MOVE INJECTED BY PICKER AND PLAYED");
-            }
-            // TEMP AI GENERATED DEBUG INFO
-            // 🚨 THE DEEP DECODER
-            uint64_t incremental_post = board.get_zobrist_key();
-            uint64_t hardcalc_post = board.generate_zobrist_key();
-            if (incremental_post != hardcalc_post) {
-                std::cout << "\n--- FATAL ZOBRIST DESYNC ---" << std::endl;
-                std::cout << "Move Made: " << move_to_string(board, move) << " (Flag: " << get_flags(move) << ")" << std::endl;
-                
-                std::cout << "\n--- BOARD BEFORE MOVE ---\n";
-                std::cout << print_board(pre_move_board);
-                
-                std::cout << "\n--- BOARD AFTER MOVE ---\n";
-                std::cout << print_board(board);
-                
-                // Print the raw piece array data for the corrupted square (e.g. b7 = 49)
-                std::cout << "\nPre-move b7 array: " << pre_move_board.get_piece_on_sq(static_cast<Square>(49)) << "\n";
-                std::cout << "Post-move b7 array: " << board.get_piece_on_sq(static_cast<Square>(49)) << "\n";
-                
-                if (!move_exists) std::cout << "GHOST MOVE INJECTED BY PICKER AND PLAYED: " << move_to_string(board, move) << std::endl;
-                uint64_t diff = incremental_post ^ hardcalc_post;
-                std::cout << "\n--- FATAL ZOBRIST DESYNC ---" << std::endl;
-                std::cout << "Move Made: " << move_to_string(board, move) << " (Flag: " << get_flags(move) << ")" << std::endl;
-                
-                bool found = false;
-                
-                // 1. Check for single key corruptions
-                if (diff == zobrist_side) { std::cout << "CORRUPTION: Side to Move\n"; found = true; }
-                for(int i=0; i<16; i++) if(diff == zobrist_castling[i]) { std::cout << "CORRUPTION: Castling Right " << i << "\n"; found = true; }
-                for(int i=0; i<65; i++) if(diff == zobrist_ep[i]) { std::cout << "CORRUPTION: EP Square " << i << "\n"; found = true; }
-                for(int c=0; c<2; c++) for(int p=0; p<6; p++) for(int sq=0; sq<64; sq++) 
-                    if(diff == zobrist_pieces[c][p][sq]) { std::cout << "CORRUPTION: Piece (C:" << c << " P:" << p << " Sq:" << sq << ")\n"; found = true; }
-
-                // 2. Check for DOUBLE key corruptions (e.g. Color Desync, EP math mismatch, Castling mask error)
-                if (!found) {
-                    std::cout << "Running Deep Decode for Multi-Key Desync...\n";
-                    
-                    // Check if it's an EP file vs Exact Square mismatch
-                    for(int ep1=0; ep1<65; ep1++) {
-                        for(int ep2=0; ep2<65; ep2++) {
-                            if (diff == (zobrist_ep[ep1] ^ zobrist_ep[ep2])) {
-                                std::cout << "CORRUPTION: En Passant Mismatch! (EP1: " << ep1 << " vs EP2: " << ep2 << ")\n";
-                                found = true;
-                            }
-                        }
-                    }
-
-                    // Check if it's a Castling Mask mismatch
-                    for(int c1=0; c1<16; c1++) {
-                        for(int c2=0; c2<16; c2++) {
-                            if (diff == (zobrist_castling[c1] ^ zobrist_castling[c2])) {
-                                std::cout << "CORRUPTION: Castling Rights Mismatch! (Right 1: " << c1 << " vs Right 2: " << c2 << ")\n";
-                                found = true;
-                            }
-                        }
-                    }
-
-                    // Check if it's a Piece Color/Square mismatch
-                    for(int c1=0; c1<2; c1++) for(int p1=0; p1<6; p1++) for(int sq1=0; sq1<64; sq1++) {
-                        for(int c2=0; c2<2; c2++) for(int p2=0; p2<6; p2++) for(int sq2=0; sq2<64; sq2++) {
-                            if (diff == (zobrist_pieces[c1][p1][sq1] ^ zobrist_pieces[c2][p2][sq2])) {
-                                std::cout << "CORRUPTION: Piece Sync Error!\n";
-                                std::cout << "   Key A: Color " << c1 << ", Piece " << p1 << ", Sq " << sq1 << "\n";
-                                std::cout << "   Key B: Color " << c2 << ", Piece " << p2 << ", Sq " << sq2 << "\n";
-                                found = true;
-                            }
-                        }
-                    }
-                }
-
-                if (!found) std::cout << "CORRUPTION: 3+ Keys desynced (Massive Bitboard Failure)\n";
-                assert(false && "FATAL ZOBRIST DESYNC CAUGHT");
-            }*/
-            // DELETE TILL HERE

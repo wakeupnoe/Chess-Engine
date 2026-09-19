@@ -2,9 +2,13 @@
 #include "bitboard.h"
 #include "types.h"
 #include "zobrist.h"
+#include "nnue.h"
 #include <array>
 #include <string>
 #include <cassert>
+
+// Forward declare the NNUE update function so the template knows it exists
+void update_accumulator_piece(Accumulator& acc, Color c, Piece p, Square sq, int weight, Square w_king, Square b_king);
 
 const int MAX_GAME_PLIES = 2048;
 
@@ -26,11 +30,11 @@ public:
     uint64_t generate_zobrist_key() const;
     void clear();
     template <Color Us>
-    bool make_move(Move move);
+    bool make_move(Move move, const Accumulator& prev_acc, Accumulator& next_acc);
     template <Color Us>
     void unmake_move(Move move);
     template <Color Us>
-    void make_null_move();
+    void make_null_move(const Accumulator& prev_acc, Accumulator& next_acc);
     template <Color Us>
     void unmake_null_move();
 
@@ -101,28 +105,6 @@ public:
         }
         return false;
     }
-
-    //temp AI Generated, delete after the debug
-    /*inline void check_state_integrity() const {
-        for (int sq = 0; sq < 64; sq++) {
-            Piece p = pieceOnSquare[sq];
-            
-            // 1. If pieceOnSquare says a piece is here, the bitboard MUST have a 1.
-            if (p != NO_PIECE_TYPE) {
-                Color c = (colorPieces[WHITE] & SquareBB(sq)) ? WHITE : BLACK;
-                assert((pieces[c][p] & SquareBB(sq)) && "Integrity: pieceOnSquare exists, but Bitboard is 0!");
-            }
-            
-            // 2. If the bitboard has a 1, pieceOnSquare MUST NOT be empty.
-            bool is_white = colorPieces[WHITE] & SquareBB(sq);
-            bool is_black = colorPieces[BLACK] & SquareBB(sq);
-            assert(!(is_white && is_black) && "Integrity: Square occupied by both colors!");
-            
-            if (is_white || is_black) {
-                assert(p != NO_PIECE_TYPE && "Integrity: Bitboard has a piece, but pieceOnSquare is empty!");
-            }
-        }
-    }*/
 };
 
 // CONTRACT [Null Moves]:
@@ -132,7 +114,8 @@ public:
 // - GUARANTEES: A safe "pass" turn that perfectly syncs the Zobrist key and History.
 
 template <Color Us>
-void Board::make_null_move(){
+void Board::make_null_move(const Accumulator& prev_acc, Accumulator& next_acc){
+    next_acc = prev_acc;
     // CONTRACT ENFORCEMENT
     assert(gamePly < MAX_GAME_PLIES && "make_null_move: HistoryStack overflow!");
     assert(currentState.En_Passant_Target_Square <= NO_SQUARE && "make_null_move: Corrupted EP square index!");
@@ -163,8 +146,8 @@ void Board::unmake_null_move(){
 // - GUARANTEES: Returns 'false' ONLY if the move leaves the active King in check.
 
 template <Color Us> // Color of the side that makes the move
-bool Board::make_move(Move move){
-    // check_state_integrity();
+bool Board::make_move(Move move, const Accumulator& prev_acc, Accumulator& next_acc){
+    next_acc = prev_acc;
 
     // Phase 0: Basic Variables
     constexpr Color Them = Us == WHITE ? BLACK : WHITE;
@@ -173,6 +156,9 @@ bool Board::make_move(Move move){
     int flag = get_flags(move);
     Piece pieceType = pieceOnSquare[from_sq];
     Piece capturedType = pieceOnSquare[to_sq];
+
+    Square w_king = static_cast<Square>(lsb(get_pieces(WHITE, KING)));
+    Square b_king = static_cast<Square>(lsb(get_pieces(BLACK, KING)));
     
     // STRICT CONTRACT ENFORCEMENT
     for (int sq = 0; sq < 64; sq++) {
@@ -210,8 +196,14 @@ bool Board::make_move(Move move){
     // Phase 3: Base Piece Movement
     if(capturedType!=NO_PIECE_TYPE){
         remove_piece(Them,capturedType,to_sq);
+        update_accumulator_piece(next_acc, Them, capturedType, static_cast<Square>(to_sq), -1, w_king, b_king);
     }
+
     move_piece(Us,pieceType,from_sq,to_sq);
+    update_accumulator_piece(next_acc, Us, pieceType, static_cast<Square>(from_sq), -1, w_king, b_king);
+    update_accumulator_piece(next_acc, Us, pieceType, static_cast<Square>(to_sq), 1, w_king, b_king);
+
+
 
     // Phase 4: Special Move Flags
     if(flag){
@@ -219,10 +211,14 @@ bool Board::make_move(Move move){
             remove_piece(Us,PAWN,to_sq);
             Piece promoted_to = static_cast<Piece>(KNIGHT + (flag & 3)); 
             add_piece(Us,promoted_to,to_sq); // last 3 bits? ROOK, BISHOP, KNIGHT, QUEEN (in some order)  (if we ordered Pieces correctly and matched with moveencoding)
+            update_accumulator_piece(next_acc, Us, PAWN, static_cast<Square>(to_sq), -1, w_king, b_king);
+            update_accumulator_piece(next_acc, Us, promoted_to, static_cast<Square>(to_sq), 1, w_king, b_king);
         } else if(flag == 5){ // enpassant
             int enemy_pawn_sq = to_sq + (Us == WHITE ? -8 : 8);
             remove_piece(Them,PAWN,enemy_pawn_sq);
             currentState.Captured_Piece_Type = PAWN;
+
+            update_accumulator_piece(next_acc, Them, PAWN, static_cast<Square>(enemy_pawn_sq), -1, w_king, b_king);
         } else if(flag == 1){ // double push
             currentState.En_Passant_Target_Square = static_cast<Square>(to_sq + (Us == WHITE ? -8 : 8));
             currentState.Zobrist_Key ^= zobrist_ep[currentState.En_Passant_Target_Square]; // square indexable
@@ -230,12 +226,22 @@ bool Board::make_move(Move move){
             Square from_rook = Us == WHITE ? H1 : H8;
             Square to_rook = static_cast<Square>(from_rook - 2);
             move_piece(Us,ROOK,from_rook,to_rook);
+
+            update_accumulator_piece(next_acc, Us, ROOK, from_rook, -1, w_king, b_king);
+            update_accumulator_piece(next_acc, Us, ROOK, to_rook, 1, w_king, b_king);
         } else if(flag == 3){ // QUEEN SIDE
             Square from_rook = Us == WHITE ? A1 : A8;
             Square to_rook = static_cast<Square>(from_rook + 3);
             move_piece(Us,ROOK,from_rook,to_rook);
+            update_accumulator_piece(next_acc, Us, ROOK, from_rook, -1, w_king, b_king);
+            update_accumulator_piece(next_acc, Us, ROOK, to_rook, 1, w_king, b_king);
         }
     }
+    // NNUE update if king moved:
+    if(pieceType == KING){
+        refresh_single_accumulator<Us>(*this,next_acc);
+    }
+
     // Phase 5: Irreversible Board State AND Phase 6: Zobrist State Toggles
     currentState.Zobrist_Key ^= zobrist_castling[currentState.castling_rights];
     currentState.castling_rights &= CASTLING_MASK[from_sq] & CASTLING_MASK[to_sq];
@@ -266,7 +272,6 @@ bool Board::make_move(Move move){
             assert((pieces[c][p] & SquareBB(sq)) && "CRITICAL: pieceOnSquare completely desynced from bitboards!");
         }
     }
-    // check_state_integrity();
     return true;
 }
 
@@ -294,7 +299,7 @@ void Board::unmake_move(Move move){
     quiet_move_piece(Us,pieceType,to_sq,from_sq);
 
     // Phase 2: Special Flag Reversal
-    if(flag){  // argh performance hit
+    if(flag){
         if(flag & 8){ // promotion
             Piece promoted_to = static_cast<Piece>(KNIGHT + (flag & 3)); 
             quiet_remove_piece(Us,promoted_to,from_sq);
@@ -314,12 +319,11 @@ void Board::unmake_move(Move move){
     }
 
     // Phase 3: Captured Piece Restoration
-    if(capturedType != NO_PIECE_TYPE && flag != 5){ // argh performance hit
+    if(capturedType != NO_PIECE_TYPE && flag != 5){
         quiet_add_piece(Them, capturedType, to_sq);
     }
 
     // Phase 4: State Time Travel
     currentState = HistoryStack[--gamePly];
     sideToMove = Us;
-    // check_state_integrity();
 }

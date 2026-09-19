@@ -84,7 +84,7 @@ public:
         uint8_t c_depth = static_cast<uint8_t>((c_data >> 32) & 0xFF);
         uint8_t c_age = static_cast<uint8_t>((c_data >> 48) & 0xFF);
         
-        if(c_key != key || c_age != age || c_depth <= depth) {
+        if(c_key != key || c_age != age || c_depth <= depth || (c_depth == depth && flag == TT_EXACT)) {
             uint64_t n_data = pack_tt_data(move, score, depth, flag, age);
             uint64_t n_key_xor_data = n_data ^ key;
             cur->data.store(n_data, std::memory_order_relaxed);

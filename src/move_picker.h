@@ -153,13 +153,11 @@ public:
                 std::swap(captures.scores[captures_index], captures.scores[best_index]);
                 Move move = captures.get(captures_index++);
 
-                //if(move == tt_move) continue;
-
                 // PROOF: Catch the generator hallucinating EP moves
-                if (get_flags(move) == 5 && !is_pseudo_legal<Us>(board, move)) {
+                /*if (get_flags(move) == 5 && !is_pseudo_legal<Us>(board, move)) {
                     std::cout << "CAUGHT BAD EP FROM GENERATOR: " << move_to_string(board, move) << "\n";
                     continue; 
-                }
+                }*/
 
                 return move;
             }
@@ -199,8 +197,7 @@ public:
 
                 Move move = quiets.get(quiets_index++);
 
-                // if(move == killers[0] || move == killers[1] || move == tt_move) continue; // do not evaluate killers twice
-                // above is not needed, since we only select things above - INFINITY
+                // if(move == killers[0] || move == killers[1] || move == tt_move) continue; is not needed, since we only select things above - INFINITY
                 return move;
             }
             case BAD_CAPTURES: {
