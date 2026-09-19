@@ -14,7 +14,7 @@ int main(){
     init_attacks();
     zobrist_init();
     init_lmr_table();
-    TT.resize(64);
+    TT.resize(512); // 256 512 64 increased to see effect on multithreading performance
     UCI::loop();
 
     return 0;

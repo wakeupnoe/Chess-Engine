@@ -45,8 +45,6 @@ constexpr int NUM_KILLERS = 2; // how many killermoves we store (this should be 
 extern int LMR_table[64][64];
 void init_lmr_table();
 
-inline uint64_t nodes_searched = 0;
-inline int max_seldepth = 0;
 inline Move killer_moves[MAX_PLY][NUM_KILLERS];
 inline int history_heuristic[2][64][64];
 inline int counter_move_history[2][64][64][64];
@@ -56,7 +54,11 @@ struct SearchInfo {
     Move move_played = 0;
 };
 
-inline SearchInfo search_stack[MAX_PLY];
+inline std::atomic<uint64_t> nodes_searched = 0;
+inline thread_local int local_counter = 0;
+
+inline thread_local SearchInfo search_stack[MAX_PLY];
+inline thread_local int max_seldepth = 0;
 
 
 inline void clear_history_heuristic(){
@@ -85,31 +87,37 @@ inline void update_history(int& entry, int bonus){
 // - GUARANTEES: Safe PV extraction that aborts on illegal TT moves.
 
 template <Color Us>
-Move get_best_move(Board& board, int target_depth){
+Move get_best_move(Board& board, int target_depth, int thread_id = 0){
     assert(target_depth > 0 && target_depth <= MAX_PLY && "get_best_move: target_depth out of bounds!");
     assert(board.get_pieces(Us, KING) != 0ULL && "get_best_move: Root position has no King!");
 
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     Move best_move_overall = 0;
-    clear_history_heuristic();
-    clear_counter_move_history();
     clear_search_stack();
-    nodes_searched = 0;
     max_seldepth = 0;
 
     auto start_time = std::chrono::steady_clock::now();
     int prev_score = 0;
     int king_sq = lsb(board.get_pieces(Us, KING));
     bool in_check = is_square_attacked<Them>(static_cast<Square>(king_sq),board);
-    for(int current_depth = 1; current_depth <= target_depth; current_depth++){
+    int actual_target = std::min(target_depth + thread_id % 2, MAX_PLY - 1);
+
+    Move tt_move = 0;
+    // dummy variables, will get optimized away:
+    int16_t tt_score = 0;
+    uint8_t tt_depth = 0;
+    TTFlag tt_flag = TT_NONE;
+    uint8_t tt_age= 0;
+
+    for(int current_depth = 1; current_depth <= actual_target; current_depth++){
         //std::cout << "DEBUG searching at depth " << current_depth << std::endl; 
         int window_alpha = current_depth==1 ?  -INFINITY_SCORE : std::max(-INFINITY_SCORE, prev_score - 50);
         int window_beta = current_depth==1 ?  INFINITY_SCORE : std::min(INFINITY_SCORE, prev_score + 50);
         
         int root_newdepth = in_check ? current_depth : current_depth - 1;
 
-        TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
-        Move tt_move = tt_entry != nullptr ? tt_entry->move : 0;
+        bool tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
+
         Move current_best_move = 0;
         
         while(true){
@@ -124,7 +132,7 @@ Move get_best_move(Board& board, int target_depth){
             while((move = picker.next_move()) != 0){
 
                 // advanced UCI metrics at high depths
-                if(current_depth > 17){
+                if(current_depth > 17 && thread_id == 0){
                     auto now = std::chrono::steady_clock::now();
                     std::chrono::duration<double, std::milli> elapsed = now - start_time;
 
@@ -188,63 +196,65 @@ Move get_best_move(Board& board, int target_depth){
         if(abort_search){
             break;
         }
+        if(thread_id == 0){
 
-        // UCI metrics:
-        auto current_time = std::chrono::steady_clock::now();
-        std::chrono::duration<double> elapsed = current_time - start_time;
-        double seconds = elapsed.count();
-
-        uint64_t nps = (seconds > 0.0001) ? static_cast<uint64_t>(nodes_searched / seconds) : 0;
-        int time_ms = static_cast<int>(seconds * 1000);
-        int hashfull = TT.get_hashfull();
-
-        std::string score_string;
-        if(std::abs(prev_score) > MATE_SCORE - 100){
-            int plies_to_mate = MATE_SCORE - std::abs(prev_score);
-            int moves_to_mate = (plies_to_mate + 1) / 2;
-            if(prev_score < 0) moves_to_mate = -moves_to_mate;
-            score_string = "mate " + std::to_string(moves_to_mate);
-        } else {
-            score_string = "cp " + std::to_string(prev_score);
-        }
-
-        // UCI type output
-        /**/
-        std::cout << "info depth " << current_depth
-                << " seldepth " << max_seldepth
-                << " score " << score_string
-                << " nodes " << nodes_searched
-                << " nps " << nps
-                << " hashfull " << hashfull
-                << " time " << time_ms
-                << " pv ";
-        /**/
-        if(current_best_move != 0){
-            std::cout << move_to_string(board,current_best_move) << " ";
-            Board temp_board = board;
-            if(Us == WHITE) temp_board.make_move<WHITE>(current_best_move);
-            else temp_board.make_move<BLACK>(current_best_move);
-            for(int i = 0; i<63; i++){
-                TTEntry* entry = TT.probe(temp_board.get_zobrist_key());
-                if(entry != nullptr && entry->move != 0){
-                    Move pv_move = entry->move;
-                    Color c = temp_board.get_side_to_move();
-
-                    std::cout << move_to_string(temp_board,pv_move) << " ";
-
-                    bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(pv_move) : temp_board.make_move<BLACK>(pv_move);
-                    if(!legal) break;
-                } else {
-                    break;
-                }
+            // UCI metrics:
+            auto current_time = std::chrono::steady_clock::now();
+            std::chrono::duration<double> elapsed = current_time - start_time;
+            double seconds = elapsed.count();
+            
+            uint64_t nps = (seconds > 0.0001) ? static_cast<uint64_t>(nodes_searched / seconds) : 0;
+            int time_ms = static_cast<int>(seconds * 1000);
+            int hashfull = TT.get_hashfull();
+            
+            std::string score_string;
+            if(std::abs(prev_score) > MATE_SCORE - 100){
+                int plies_to_mate = MATE_SCORE - std::abs(prev_score);
+                int moves_to_mate = (plies_to_mate + 1) / 2;
+                if(prev_score < 0) moves_to_mate = -moves_to_mate;
+                score_string = "mate " + std::to_string(moves_to_mate);
+            } else {
+                score_string = "cp " + std::to_string(prev_score);
             }
             
+            // UCI type output
+            /**/
+            std::cout << "info depth " << current_depth
+            << " seldepth " << max_seldepth
+            << " score " << score_string
+            << " nodes " << nodes_searched
+            << " nps " << nps
+            << " hashfull " << hashfull
+            << " time " << time_ms
+            << " pv ";
+            /**/
+            if(current_best_move != 0){
+                std::cout << move_to_string(board,current_best_move) << " ";
+                Board temp_board = board;
+                if(Us == WHITE) temp_board.make_move<WHITE>(current_best_move);
+                else temp_board.make_move<BLACK>(current_best_move);
+                for(int i = 0; i<63; i++){
+                    bool tt_hit = TT.probe(temp_board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
+
+                    if(tt_hit && tt_move != 0){
+                        Color c = temp_board.get_side_to_move();
+                        
+                        std::cout << move_to_string(temp_board,tt_move) << " ";
+                        
+                        bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(tt_move) : temp_board.make_move<BLACK>(tt_move);
+                        if(!legal) break;
+                    } else {
+                        break;
+                    }
+                }
+                
+            }
+            std::cout << std::endl;
         }
-        std::cout << std::endl;
         if(prev_score > MATE_SCORE - 100){
             break; // forced mate detected
         }
-        if(TM.time_control_enabled){
+        if(TM.time_control_enabled){ // soft limit hit (between depths)
             auto current_time = std::chrono::steady_clock::now();
             std::chrono::duration<double, std::milli> elapsed = current_time - TM.start_time;
             if(elapsed.count() >= (TM.soft_limit * 0.8)) break;
@@ -261,13 +271,15 @@ template <Color Us>
 int quiescence_search(Board& board, int alpha, int beta, int ply){
     assert(ply >= 0 && ply < MAX_PLY && "qsearch: Ply out of bounds!");
 
-    if((nodes_searched & 2047) == 0){
+    if(local_counter >= 2048){
+        nodes_searched += local_counter;
+        local_counter = 0;
         check_time();
     }
     
     if(abort_search) return 0;
 
-    nodes_searched++;
+    local_counter++;
     max_seldepth = std::max(max_seldepth, ply);
     // board.check_state_integrity();
     int standard_pat = evaluate<Us>(board);
@@ -279,16 +291,20 @@ int quiescence_search(Board& board, int alpha, int beta, int ply){
 
     
     int original_alpha = alpha;
-    
-    TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
+
     Move tt_move = 0;
-    
-    if(tt_entry != nullptr){
-        tt_move = tt_entry->move;
-        int tt_score = score_from_tt(tt_entry->score, ply);
-        if(tt_entry->flag == TT_EXACT) return tt_score;
-        if(tt_entry->flag == TT_ALPHA && tt_score <= alpha) return tt_score;
-        if(tt_entry->flag == TT_BETA && tt_score >= beta) return tt_score;
+    int16_t tt_score = 0;
+    TTFlag tt_flag = TT_NONE;
+    // dummy variables, will get optimized away:
+    uint8_t tt_depth = 0;
+    uint8_t tt_age= 0;
+    bool tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
+
+    if(tt_hit){
+        int real_tt_score = score_from_tt(tt_score, ply);
+        if(tt_flag == TT_EXACT) return real_tt_score;
+        if(tt_flag == TT_ALPHA && real_tt_score <= alpha) return real_tt_score;
+        if(tt_flag == TT_BETA && real_tt_score >= beta) return real_tt_score;
     }
     
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
@@ -336,18 +352,15 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     assert(ply >= 0 && ply < MAX_PLY && "search: Ply out of bounds!");
     assert(board.get_pieces(Us, KING) != 0ULL && "search: Board has no King!");
 
-    if((nodes_searched & 2047) == 0){
+    if(local_counter >= 2048){
+        nodes_searched += local_counter;
+        local_counter = 0;
         check_time();
     }
     
     if(abort_search) return 0;
 
-    //TEMP DEBUGGING: // AI GENERATED
-    // uint64_t pre_move_key = board.get_zobrist_key();
-    // uint64_t hardcalc_pre = board.generate_zobrist_key();
-    // DELETE TILL HERE
-
-    nodes_searched++;
+    local_counter++;
     if(board.is_draw()) return 0; // "ply > 0 &&" important if we remove root search function
     if(ply >= MAX_PLY - 1) return evaluate<Us>(board);
     
@@ -358,28 +371,31 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     bool in_check = is_square_attacked<Them>(static_cast<Square>(kingSq), board);
     int newdepth = in_check ? depth : depth - 1;
 
-    TTEntry* tt_entry = TT.probe(board.get_zobrist_key());
     Move tt_move = 0;
+    int16_t tt_score = 0;
+    uint8_t tt_depth = 0;
+    // dummy variables, will get optimized away:
+    TTFlag tt_flag = TT_NONE;
+    uint8_t tt_age = 0;
+    bool tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
 
     if(depth <= 0){ // originally "==", but LMR might lead to negative depth
         return quiescence_search<Us>(board, alpha, beta, ply);
     }
     int extension = 0;
     // TT probe
-    if(tt_entry != nullptr){
-        tt_move = tt_entry->move;
-        int tt_score = score_from_tt(tt_entry->score, ply);
-        int tt_depth = tt_entry->depth;
-        if(tt_depth >= depth || (std::abs(tt_score) > MATE_SCORE - 100)){
+    if(tt_hit){
+        int real_tt_score = score_from_tt(tt_score, ply);
+        if(tt_depth >= depth || (std::abs(real_tt_score) > MATE_SCORE - 100)){
             //cutoff?
-            if(tt_entry->flag == TT_EXACT) return tt_score;
-            if(tt_entry->flag == TT_ALPHA && tt_score <= alpha) return tt_score;
-            if(tt_entry->flag == TT_BETA && tt_score >= beta) return tt_score;
+            if(tt_flag == TT_EXACT) return real_tt_score;
+            if(tt_flag == TT_ALPHA && real_tt_score <= alpha) return real_tt_score;
+            if(tt_flag == TT_BETA && real_tt_score >= beta) return real_tt_score;
         }
 
         // singular extension
-        if(search_stack[ply].excluded_move == 0 && tt_move != 0 && tt_depth >= depth - 3 && tt_entry->flag != TT_ALPHA && std::abs(tt_score) < MATE_SCORE - 100) {
-            int singular_beta = tt_score - (depth * 2);
+        if(search_stack[ply].excluded_move == 0 && tt_move != 0 && tt_depth >= depth - 3 && tt_flag != TT_ALPHA && std::abs(real_tt_score) < MATE_SCORE - 100) {
+            int singular_beta = real_tt_score - (depth * 2);
             int exclusion_depth = (depth -1) / 2;
             search_stack[ply].excluded_move = tt_move;
             int exclusion_score = search<Us>(board, exclusion_depth, singular_beta - 1, singular_beta, ply);
@@ -414,8 +430,9 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     // Internal Itterative Deepening
     if (tt_move == 0 && depth >= 4 && !in_check){
         search<Us>(board, depth - 2, alpha, beta, ply); // just to populate the TT table (with a shallow search)
-        tt_entry = TT.probe(board.get_zobrist_key());
-        if(tt_entry != nullptr) tt_move = tt_entry->move;
+        tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
+        //tt_entry = TT.probe(board.get_zobrist_key());
+        //if(tt_entry != nullptr) tt_move = tt_entry->move;
     }
 
     
@@ -451,9 +468,9 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         for(int i = 0; i < test_caps.size(); i++) if(test_caps.get(i) == move) move_exists = true;
         Board pre_move_board = board;
         */
-       constexpr int FP_MAX_DEPTH = 4;
-       constexpr int FP_BASE_MARGIN = 100;
-       constexpr int FP_MARGIN_MULTIPLIER = 100;
+        constexpr int FP_MAX_DEPTH = 4;
+        constexpr int FP_BASE_MARGIN = 100;
+        constexpr int FP_MARGIN_MULTIPLIER = 100;
 
        
         // Futility Pruning

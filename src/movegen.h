@@ -124,6 +124,10 @@ bool is_pseudo_legal(const Board& board, Move move){
             if(flag == 2 || flag == 3) {
                 // STRICT ORIGIN: King must start on its home square
                 if (from != (Us == WHITE ? E1 : E8)) return false;
+
+                constexpr Color Them = (Us == WHITE) ? BLACK : WHITE;
+
+                if(is_square_attacked<Them>(static_cast<Square>(from), board)) return false;
                 
                 if(flag == 2){ // King Side
                     if (!(board.get_castling_rights() & (Us == WHITE ? WK : BK))) return false;
@@ -131,6 +135,9 @@ bool is_pseudo_legal(const Board& board, Move move){
                     if(to != (Us == WHITE ? G1 : G8)) return false;
                     Bitboard path = Us == WHITE ? (SquareBB(F1) | SquareBB(G1)) : (SquareBB(F8) | SquareBB(G8));
                     if(occ & path) return false;
+
+                    if(is_square_attacked<Them>(static_cast<Square>(from + 1), board)) return false;
+
                     // STRICT ROOK EXISTENCE
                     Square rook_sq = Us == WHITE ? H1 : H8;
                     if(board.get_piece_on_sq(rook_sq) != ROOK) return false;
@@ -142,6 +149,9 @@ bool is_pseudo_legal(const Board& board, Move move){
                     if(to != (Us == WHITE ? C1 : C8)) return false;
                     Bitboard path = Us == WHITE ? (SquareBB(D1) | SquareBB(C1) | SquareBB(B1)) : (SquareBB(D8) | SquareBB(C8) | SquareBB(B8));
                     if(occ & path) return false;
+
+                    if(is_square_attacked<Them>(static_cast<Square>(from - 1), board)) return false;
+
                     // STRICT ROOK EXISTENCE
                     Square rook_sq = Us == WHITE ? A1 : A8;
                     if(board.get_piece_on_sq(rook_sq) != ROOK) return false;

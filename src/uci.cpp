@@ -1,12 +1,15 @@
 #include "uci.h"
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 extern TimeManager TM;
 extern std::atomic<bool> abort_search;
 
 namespace UCI {
-    std::thread search_thread;
+    //std::thread search_thread;
+    std::vector<std::thread> search_threads;
+    int num_threads = 8;
 
     void setup_time_controle(Color Us, int wtime, int btime, int winc, int binc, int moves_to_go = 40){
         TM.time_control_enabled = true;
@@ -33,7 +36,10 @@ namespace UCI {
             iss >> token;
             if(token == "quit"){
                 abort_search = true;
-                if(search_thread.joinable()) search_thread.join();
+                for(auto& t : search_threads){
+                    if(t.joinable()) t.join();
+                }
+                search_threads.clear();
                 break;
             } else if(token == "stop"){
                 abort_search = true;
@@ -46,6 +52,7 @@ namespace UCI {
             } else if(token == "ucinewgame"){
                     TT.clear();
                     clear_history_heuristic();
+                    clear_counter_move_history();
             } else if(token == "position"){
                 iss >> token;
                 if(token == "startpos"){
@@ -72,7 +79,11 @@ namespace UCI {
                     }
                 }
             } else if(token == "go"){
-                if(search_thread.joinable()) search_thread.join();
+                abort_search = true;
+                for(auto& t : search_threads){
+                    if(t.joinable()) t.join();
+                }
+                search_threads.clear();
 
                 int depth = MAX_PLY;
                 int wtime = 0, btime = 0, winc = 0, binc = 0, moves_to_go = 0;
@@ -91,20 +102,20 @@ namespace UCI {
                     TM.start_time = std::chrono::steady_clock::now();
                     TM.hard_limit = std::max(1,movetime - 50);
                     TM.soft_limit = TM.hard_limit;
-                } else if(wtime > 0 && btime > 0){
+                } else if(wtime > 0 || btime > 0){
                     setup_time_controle(board.get_side_to_move(),wtime,btime,winc,binc,moves_to_go);
                 } else {
                     TM.time_control_enabled = false;
                 }
-                //TEMP till we implement time management:
-                /*if(depth == MAX_PLY && (wtime > 0 || btime > 0 || movetime > 0)){
-                    depth = 15;
-                }*/
+                
                 abort_search = false;
-                search_thread = std::thread([board, depth]() mutable{
-                    Move best_move = (board.get_side_to_move() == WHITE) ? get_best_move<WHITE>(board, depth) : get_best_move<BLACK>(board, depth);
-                    std::cout << "bestmove " << move_to_string(board, best_move) << std::endl;
-                });
+                nodes_searched = 0;
+                for(int i = 0; i<num_threads; i++){
+                    search_threads.emplace_back([board, depth, i]() mutable{
+                        Move best_move = (board.get_side_to_move() == WHITE) ? get_best_move<WHITE>(board, depth, i) : get_best_move<BLACK>(board, depth, i);
+                        if(i == 0) std::cout << "bestmove " << move_to_string(board, best_move) << std::endl;
+                    });
+                }
             }
         }
     }

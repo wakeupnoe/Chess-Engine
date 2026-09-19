@@ -69,7 +69,7 @@ enum File : uint8_t {
 enum TTFlag : uint8_t {
     TT_NONE = 0, TT_EXACT = 1, TT_ALPHA = 2, TT_BETA = 3
 };
-
+/*
 struct TTEntry{
     uint64_t key; // zobrist key for collision detection
     Move move; // best move found
@@ -77,4 +77,4 @@ struct TTEntry{
     uint8_t depth;
     uint8_t flag;
     uint8_t age;
-};
+};*/

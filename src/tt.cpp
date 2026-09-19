@@ -17,6 +17,9 @@ void TranspositionTable::resize(size_t mb){
 
 void TranspositionTable::clear(){
     if(table != nullptr){
-        std::memset(table, 0, num_entries * sizeof(TTEntry));
+        for(size_t i = 0; i<num_entries; i++){
+            table[i].data.store(0, std::memory_order_relaxed);
+            table[i].key_xor_data.store(0, std::memory_order_relaxed);
+        }
     }
 };
