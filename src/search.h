@@ -498,8 +498,8 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
     }
 
     // Null-Move Pruning
-    constexpr int R = 2; // Depth reduction if we are safe
-    if(!in_check && depth >= 3 && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
+    int R = 2; //5 + depth/4;// 2; // Depth reduction if we are safe
+    if(!in_check && depth >= R+1 && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
         board.make_null_move<Us>(accumulators[ply], accumulators[ply+1]);
         
         int null_score = -search<Them>(board, newdepth - R, -beta, -beta + 1, ply + 1);
@@ -509,10 +509,11 @@ int search(Board& board, int depth, int alpha, int beta, int ply){
         }
     }
     
-    // Internal Itterative Deepening
+    // Internal Itterative Deepening, replacable by IIR (iterative deepening will fix the rest)
     if (tt_move == 0 && depth >= 4 && !in_check){
         search<Us>(board, depth - 2, alpha, beta, ply); // just to populate the TT table (with a shallow search)
         tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
+        //depth--; //IIR needs good move ordering even when we have no TT move
     }
 
     

@@ -26,7 +26,7 @@ A competitive C++ Chess engine.
 - Perft runs at ~75M NPS (without Bulk Counting)
 - Mate in 8 and 10 solved, not tested extensivly
 - ~6M NPS in Play on 8 threads
-- first estimation of strength: ~2600 elo
+- Estimation of strength: ~2530 elo
 
 ## Next steps
 - Test, improve, possibly generate own .nnue file

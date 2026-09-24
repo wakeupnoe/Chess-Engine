@@ -14,6 +14,8 @@ enum MovePickerState : uint8_t {
     TT_MOVE, GENERATE_CAPTURES, GOOD_CAPTURES, KILLERS, GENERATE_QUIETS, QUIETS, BAD_CAPTURES
 };
 
+constexpr int SCORE_NONE = -10'000'000;
+
 // CONTRACT [Move Picker]:
 // - ASSUMES: Arrays are sized to 7x7 to safely absorb NO_PIECE_TYPE (6) without memory corruption.
 // - GUARANTEES: Fast, bounds-checked move scoring.
@@ -58,7 +60,7 @@ private:
         for(int i = 0; i<captures.size(); i++){
             Move m = captures.get(i);
             if(m == tt_move){
-                captures.scores[i] = -INFINITY; // very negative? (not _score which is 32k)
+                captures.scores[i] = SCORE_NONE; // very negative? (not _score which is 32k)
                 continue;
             }
 
@@ -90,7 +92,7 @@ private:
             Move m = quiets.get(i);
 
             if(m == tt_move || m == killers[0] || m == killers[1]){
-                quiets.scores[i] = -INFINITY;
+                quiets.scores[i] = SCORE_NONE;
                 continue;
             }
 
@@ -135,7 +137,7 @@ public:
                 continue;
             }
             case GOOD_CAPTURES: {
-                int best_score = - INFINITY;
+                int best_score = SCORE_NONE;
                 int best_index = -1;
                 for(int i = captures_index; i<captures.size(); i++){
                     if(captures.scores[i] > best_score){
@@ -152,12 +154,6 @@ public:
                 std::swap(captures.moves[captures_index], captures.moves[best_index]);
                 std::swap(captures.scores[captures_index], captures.scores[best_index]);
                 Move move = captures.get(captures_index++);
-
-                // PROOF: Catch the generator hallucinating EP moves
-                /*if (get_flags(move) == 5 && !is_pseudo_legal<Us>(board, move)) {
-                    std::cout << "CAUGHT BAD EP FROM GENERATOR: " << move_to_string(board, move) << "\n";
-                    continue; 
-                }*/
 
                 return move;
             }
@@ -178,7 +174,7 @@ public:
                 continue;
             }
             case QUIETS: {
-                int best_score = - INFINITY; // not _SCORE since that'd be 32k (too small)
+                int best_score = SCORE_NONE; // not _SCORE since that'd be 32k (too small)
                 int best_index = -1;
                 for(int i = quiets_index; i<quiets.size(); i++){
                     if(quiets.scores[i] > best_score){
@@ -187,7 +183,7 @@ public:
                     }
                 }
 
-                if(best_index == -1 || best_score == -INFINITY){
+                if(best_index == -1 || best_score == SCORE_NONE){
                     current_state = BAD_CAPTURES;
                     continue;
                 }
@@ -201,7 +197,7 @@ public:
                 return move;
             }
             case BAD_CAPTURES: {
-                int best_score = - INFINITY;
+                int best_score = SCORE_NONE;
                 int best_index = -1;
                 for(int i = captures_index; i<captures.size(); i++){
                     if(captures.scores[i] > best_score){
@@ -219,7 +215,7 @@ public:
 
                 Move move = captures.get(captures_index++);
 
-                if(move == tt_move) continue;
+                //if(move == tt_move) continue; not needed, tt_move has score -Inf
 
                 return move;
             }
