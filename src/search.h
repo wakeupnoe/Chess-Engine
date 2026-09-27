@@ -10,7 +10,7 @@
 #include "nnue.h"
 #include <cstring>
 #include <iostream>
-#include <chrono>
+#include <chrono> // for metrics
 #include <atomic> // for multithreading
 #include <thread> // for multithreading
 
