@@ -15,6 +15,7 @@
 #include <atomic> // for multithreading
 #include <thread> // for multithreading
 
+// time mangement
 struct TimeManager {
     bool time_control_enabled = false;
     std::chrono::time_point<std::chrono::steady_clock> start_time;
@@ -23,8 +24,6 @@ struct TimeManager {
 };
 extern std::atomic<bool> abort_search;
 extern TimeManager TM;
-
-
 inline void check_time(){
     if(!TM.time_control_enabled) return;
     auto current_time = std::chrono::steady_clock::now();
@@ -34,80 +33,11 @@ inline void check_time(){
     }
 }
 
-
-// CONTRACT [Search Globals & Limits]:
-// - ASSUMES: Search ply NEVER exceeds MAX_PLY (128). Accessing killer_moves at ply >= 128 is a fatal overflow.
-// - ASSUMES: LMR_table indexing (depth, move_count) is clamped to < 64.
-// - GUARANTEES: Safe history heuristic initialization.
-
 // Global
 extern int LMR_table[64][64];
 void init_lmr_table();
 
-struct SearchInfo {
-    Move excluded_move = 0;
-    Move move_played = 0;
-};
-
 inline std::atomic<uint64_t> nodes_searched = 0;
-inline thread_local int local_counter = 0;
-
-inline thread_local Accumulator accumulators[MAX_PLY];
-inline thread_local SearchInfo search_stack[MAX_PLY];
-inline thread_local int max_seldepth = 0;
-
-
-inline void clear_history_heuristic(){
-    std::memset(history_heuristic,0,sizeof(history_heuristic));
-}
-
-inline void clear_counter_move_history(){
-    std::memset(counter_move_history,0,sizeof(counter_move_history));
-}
-
-inline void clear_search_stack(){
-    std::fill(std::begin(search_stack), std::end(search_stack), SearchInfo{});
-}
-
-inline void update_history(int& entry, int bonus){
-    entry += bonus - (entry * std::abs(bonus)) / HISTORY_MAX;
-}
-
-
-/*
-inline void check_accumulator_desync(Board& board, int ply) {
-    Accumulator fresh_acc;
-    
-    // 1. Build a brand new accumulator from scratch
-    for (int i = 0; i < LAYER_0_SIZE; i++) {
-        fresh_acc.white[i] = nnue.feature_weights.biases[i];
-        fresh_acc.black[i] = nnue.feature_weights.biases[i];
-    }
-    
-    Square w_king = static_cast<Square>(lsb(board.get_pieces(WHITE, KING)));
-    Square b_king = static_cast<Square>(lsb(board.get_pieces(BLACK, KING)));
-
-    for (int color = WHITE; color <= BLACK; color++) {
-        for (int piece = PAWN; piece <= QUEEN; piece++) {
-            Bitboard bitboard = board.get_pieces(static_cast<Color>(color), static_cast<Piece>(piece));
-            while (bitboard) {
-                Square sq = static_cast<Square>(pop_lsb(bitboard));
-                int w_idx = get_halfkp_index(WHITE, w_king, sq, static_cast<Piece>(piece), static_cast<Color>(color));
-                int b_idx = get_halfkp_index(BLACK, b_king, sq, static_cast<Piece>(piece), static_cast<Color>(color));
-                for (int i = 0; i < LAYER_0_SIZE; i++) {
-                    fresh_acc.white[i] += nnue.feature_weights.weights[w_idx][i];
-                    fresh_acc.black[i] += nnue.feature_weights.weights[b_idx][i];
-                }
-            }
-        }
-    }
-
-    // 2. Compare against the incremental one
-    for (int i = 0; i < LAYER_0_SIZE; i++) {
-        assert(accumulators[ply].white[i] == fresh_acc.white[i] && "CRITICAL: White Accumulator Desync!");
-        assert(accumulators[ply].black[i] == fresh_acc.black[i] && "CRITICAL: Black Accumulator Desync!");
-    }
-}*/
 
 // CONTRACT [Root Search]:
 // - ASSUMES: The board has a King for the side to move (Us).
