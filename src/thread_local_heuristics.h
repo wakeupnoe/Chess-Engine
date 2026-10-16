@@ -4,7 +4,7 @@
 #include <cstring>
 #include <vector>
 
-// Killer moves – two per ply
+// Killer moves – two per ply otherwise we need to change move picker!
 inline thread_local Move killer_moves[MAX_PLY][NUM_KILLERS] = {};
 // History heuristic – [color][from][to]
 inline thread_local int history_heuristic[2][64][64] = {};

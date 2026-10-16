@@ -14,7 +14,7 @@ A competitive C++ Chess engine.
 - history heuristic & Null pointer pruning
 - PVS & LMR and Aspiartion Windows
 - Static exchange evaluation
-- Move picker state machine
+- Move picker state machine implemented
 - Futility Pruning (standard and reverse), late move pruning
 - Singular Extensions, Enhanced History heuristic (counter moves)
 - Basic UCI support (metrics etc.)
@@ -25,8 +25,8 @@ A competitive C++ Chess engine.
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
 - Mate in 8 and 10 solved, not tested extensivly
-- ~6M NPS in Play on 8 threads
-- Estimation of strength: ~2530 elo
+- ~5M NPS in Play on 8 threads
+- Estimation of strength: ~2950 elo
 
 ## Next steps
 - Test, improve, possibly generate own .nnue file
@@ -42,4 +42,4 @@ Use of AI in:
 - Highly optimized low level operations
 - Alpha-Beta pruning (pruned to the death)
 - evaluation via NNUE
-- 2500 elo+
+- 2500 elo+ reached!
