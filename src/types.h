@@ -16,7 +16,8 @@ inline int get_flags(Move m) { return m >> 12; }
 
 constexpr int INFINITY_SCORE = 32000;
 constexpr int MATE_SCORE = 30000;
-
+constexpr int HISTORY_MAX = 16384; // 2^14
+constexpr int MAX_GAME_PLIES = 2048;
 
 enum Color : uint8_t{WHITE,BLACK,NO_COLOR};
 

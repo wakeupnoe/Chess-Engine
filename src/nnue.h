@@ -5,6 +5,12 @@
 #include <string>
 #include <iostream>
 
+constexpr int INPUT_SIZE = 41024;
+constexpr int LAYER_0_SIZE = 256;
+constexpr int LAYER_1_SIZE = 32;
+constexpr int LAYER_2_SIZE = 32;
+constexpr int OUTPUT_SIZE = 1;
+
 inline int flip_sq(Square sq){
     return sq ^ 63; // was 56, but LLM suggested to change it since the specific net of stockfish 12 used uses 63
 }
@@ -23,14 +29,7 @@ inline int get_halfkp_index(Color perspective, Square king_sq, Square piece_sq, 
     return k_sq * 641 + p_index * 64 + p_sq + 1; //  +1 wild AI call, since stockfish did that?? Let's see
 }
 
-constexpr int INPUT_SIZE = 41024;
-constexpr int LAYER_0_SIZE = 256;
-constexpr int LAYER_1_SIZE = 32;
-constexpr int LAYER_2_SIZE = 32;
-constexpr int OUTPUT_SIZE = 1;
-
 #pragma pack(push, 1)
-
 struct FeatureTransformer {
     int16_t biases[LAYER_0_SIZE];
     int16_t weights[INPUT_SIZE][LAYER_0_SIZE];
@@ -62,7 +61,6 @@ struct NNUE_Network {
     NetworkLayer2 layer2;
     NetworkLayer3 layer3;
 };
-
 #pragma pack(pop)
 
 extern NNUE_Network nnue; // the global unicat ^^
@@ -72,7 +70,6 @@ bool load_nnue(const std::string& file_path);
 inline int clipped_relu(int x){
     return std::max(0, std::min(127, x));
 }
-
 
 template <Color Us>
 int nnue_evaluate(const Accumulator& acc) {
@@ -111,4 +108,52 @@ int nnue_evaluate(const Accumulator& acc) {
     }
     
     return final_output / 16;
+}
+
+
+template <Color King_color>
+inline void refresh_single_accumulator(Board& board, Accumulator& acc){
+    if constexpr (King_color == WHITE){
+        for(int i = 0; i< LAYER_0_SIZE; i++) acc.white[i] = nnue.feature_weights.biases[i];
+    } else {
+        for(int i = 0; i< LAYER_0_SIZE; i++) acc.black[i] = nnue.feature_weights.biases[i];
+    }
+    Square king_sq = static_cast<Square>(lsb(board.get_pieces(King_color,KING)));
+
+    for(int color = WHITE; color <= BLACK; color++){
+        for(int piece = PAWN; piece<= QUEEN; piece++){
+            Bitboard bitboard = board.get_pieces(static_cast<Color>(color),static_cast<Piece>(piece));
+            while(bitboard){
+                Square sq = static_cast<Square>(pop_lsb(bitboard));
+                int idx = get_halfkp_index(King_color, king_sq, sq,static_cast<Piece>(piece), static_cast<Color>(color));
+                if constexpr (King_color == WHITE){
+                    for(int i = 0; i<LAYER_0_SIZE; i++) acc.white[i] += nnue.feature_weights.weights[idx][i];
+                } else {
+                    for(int i = 0; i<LAYER_0_SIZE; i++) acc.black[i] += nnue.feature_weights.weights[idx][i];
+                }
+            }
+        }
+    }
+}
+
+inline void refresh_accumulators(Board& board, Accumulator& acc){
+    refresh_single_accumulator<WHITE>(board,acc);
+    refresh_single_accumulator<BLACK>(board,acc);
+}
+
+inline void update_accumulator_piece(Accumulator& acc, Color piece_color, Piece piece_type, Square sq, int weight_sign, Square white_king_sq, Square black_king_sq){
+    if(piece_type == KING) return;
+    int w_idx = get_halfkp_index(WHITE,white_king_sq, sq, piece_type, piece_color);
+    int b_idx = get_halfkp_index(BLACK,black_king_sq, sq, piece_type, piece_color);
+    if(weight_sign > 0){
+        for(int i = 0; i<LAYER_0_SIZE; i++){
+            acc.white[i] += nnue.feature_weights.weights[w_idx][i];
+            acc.black[i] += nnue.feature_weights.weights[b_idx][i];
+        }
+    } else {
+        for(int i = 0; i<LAYER_0_SIZE; i++){
+            acc.white[i] -= nnue.feature_weights.weights[w_idx][i];
+            acc.black[i] -= nnue.feature_weights.weights[b_idx][i];
+        }
+    }
 }

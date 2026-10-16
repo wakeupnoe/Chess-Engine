@@ -40,17 +40,9 @@ inline void check_time(){
 // - ASSUMES: LMR_table indexing (depth, move_count) is clamped to < 64.
 // - GUARANTEES: Safe history heuristic initialization.
 
-//constexpr int MAX_PLY = 128; // was 64, extended for quiescence search; upper bound of search depth
-//constexpr int NUM_KILLERS = 2; // how many killermoves we store (this should be 2 if otherwise, we need to update move_picker!)
-
 // Global
 extern int LMR_table[64][64];
 void init_lmr_table();
-
-// moved to "thread_local_heuristics.h"
-//inline thread_local Move killer_moves[MAX_PLY][NUM_KILLERS];
-//inline thread_local int history_heuristic[2][64][64];
-//inline thread_local int counter_move_history[2][64][64][64];
 
 struct SearchInfo {
     Move excluded_move = 0;
@@ -64,54 +56,6 @@ inline thread_local Accumulator accumulators[MAX_PLY];
 inline thread_local SearchInfo search_stack[MAX_PLY];
 inline thread_local int max_seldepth = 0;
 
-template <Color King_color>
-inline void refresh_single_accumulator(Board& board, Accumulator& acc){
-    if constexpr (King_color == WHITE){
-        for(int i = 0; i< LAYER_0_SIZE; i++) acc.white[i] = nnue.feature_weights.biases[i];
-    } else {
-        for(int i = 0; i< LAYER_0_SIZE; i++) acc.black[i] = nnue.feature_weights.biases[i];
-    }
-    Square king_sq = static_cast<Square>(lsb(board.get_pieces(King_color,KING)));
-
-    for(int color = WHITE; color <= BLACK; color++){
-        for(int piece = PAWN; piece<= QUEEN; piece++){
-            Bitboard bitboard = board.get_pieces(static_cast<Color>(color),static_cast<Piece>(piece));
-            while(bitboard){
-                Square sq = static_cast<Square>(pop_lsb(bitboard));
-                int idx = get_halfkp_index(King_color, king_sq, sq,static_cast<Piece>(piece), static_cast<Color>(color));
-                if constexpr (King_color == WHITE){
-                    for(int i = 0; i<LAYER_0_SIZE; i++) acc.white[i] += nnue.feature_weights.weights[idx][i];
-                } else {
-                    for(int i = 0; i<LAYER_0_SIZE; i++) acc.black[i] += nnue.feature_weights.weights[idx][i];
-                }
-            }
-        }
-    }
-}
-
-inline void refresh_accumulators(Board& board, Accumulator& acc){
-    refresh_single_accumulator<WHITE>(board,acc);
-    refresh_single_accumulator<BLACK>(board,acc);
-}
-
-
-inline void update_accumulator_piece(Accumulator& acc, Color piece_color, Piece piece_type, Square sq, int weight_sign, Square white_king_sq, Square black_king_sq){
-    if(piece_type == KING) return;
-    int w_idx = get_halfkp_index(WHITE,white_king_sq, sq, piece_type, piece_color);
-    int b_idx = get_halfkp_index(BLACK,black_king_sq, sq, piece_type, piece_color);
-    if(weight_sign > 0){
-        for(int i = 0; i<LAYER_0_SIZE; i++){
-            acc.white[i] += nnue.feature_weights.weights[w_idx][i];
-            acc.black[i] += nnue.feature_weights.weights[b_idx][i];
-        }
-    } else {
-        for(int i = 0; i<LAYER_0_SIZE; i++){
-            acc.white[i] -= nnue.feature_weights.weights[w_idx][i];
-            acc.black[i] -= nnue.feature_weights.weights[b_idx][i];
-        }
-    }
-}
-
 
 inline void clear_history_heuristic(){
     std::memset(history_heuristic,0,sizeof(history_heuristic));
@@ -124,8 +68,6 @@ inline void clear_counter_move_history(){
 inline void clear_search_stack(){
     std::fill(std::begin(search_stack), std::end(search_stack), SearchInfo{});
 }
-
-constexpr int HISTORY_MAX = 16384; // 2^14
 
 inline void update_history(int& entry, int bonus){
     entry += bonus - (entry * std::abs(bonus)) / HISTORY_MAX;

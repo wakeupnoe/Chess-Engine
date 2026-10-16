@@ -2,15 +2,14 @@
 #include "bitboard.h"
 #include "types.h"
 #include "zobrist.h"
-#include "nnue.h"
 #include <array>
 #include <string>
 #include <cassert>
 
-// Forward declare the NNUE update function so the template knows it exists
-void update_accumulator_piece(Accumulator& acc, Color c, Piece p, Square sq, int weight, Square w_king, Square b_king);
 
-const int MAX_GAME_PLIES = 2048;
+// Forward declare the NNUE update function so the template knows it exists
+struct Accumulator; // Forward declaration
+void update_accumulator_piece(Accumulator& acc, Color c, Piece p, Square sq, int weight, Square w_king, Square b_king);
 
 class Board {
 private:
