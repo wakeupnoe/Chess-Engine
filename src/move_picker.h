@@ -3,12 +3,13 @@
 #include "board.h"
 #include "movegen.h"
 #include "see.h"
-
+#include "thread_local_heuristics.h"
 // temp
 #include "utils.h"
 
-extern int history_heuristic[2][64][64];
-extern int counter_move_history[2][64][64][64];
+// moved to thread local heuristics
+//extern int history_heuristic[2][64][64];
+//extern int counter_move_history[2][64][64][64];
 
 enum MovePickerState : uint8_t {
     TT_MOVE, GENERATE_CAPTURES, GOOD_CAPTURES, KILLERS, GENERATE_QUIETS, QUIETS, BAD_CAPTURES

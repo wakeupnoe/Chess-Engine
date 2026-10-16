@@ -12,6 +12,7 @@ add_library(EngineLib STATIC
     tt.cpp
     nnue.cpp
     zobrist.cpp
+    thread_local_heuristics.cpp
 )
 
 target_include_directories(EngineLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
