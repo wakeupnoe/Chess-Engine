@@ -3,7 +3,7 @@
 #include "board.h"
 #include "movegen.h"
 #include "see.h"
-#include "thread_local_heuristics.h"
+//#include "thread_local_heuristics.h"
 // temp
 #include "utils.h"
 
@@ -50,6 +50,9 @@ private:
     Move killers[2];
     int killer_index;
     int prev_to;
+
+    const int (&history_heuristic)[2][64][64];
+    const int (&counter_move_history)[2][64][64][64];
 
     MoveList captures;
     int captures_index;
@@ -114,8 +117,8 @@ private:
 public:
     inline MovePickerState get_current_state(){ return current_state; }
 
-    MovePicker(const Board& b, Move tt, Move killer1, Move killer2, int prev_move_to = -1)
-        : current_state(TT_MOVE), board(b), tt_move(tt), killer_index(0), captures_index(0), quiets_index(0) {
+    MovePicker(const Board& b, Move tt, Move killer1, Move killer2, const int (&hist_heur)[2][64][64], const int (&counter_m_hist)[2][64][64][64], int prev_move_to = -1)
+        : current_state(TT_MOVE), board(b), tt_move(tt), killer_index(0), captures_index(0), quiets_index(0), history_heuristic(hist_heur), counter_move_history(counter_m_hist) {
         killers[0] = killer1;
         killers[1] = killer2;
         prev_to = prev_move_to;

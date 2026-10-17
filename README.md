@@ -21,6 +21,7 @@ A competitive C++ Chess engine.
 - Lazy SMP
 - NNUE integrted (Stockfish 12 weights)
 - ~2500 lines of code
+- SearchWorker class refactoring complete
 
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
@@ -29,7 +30,10 @@ A competitive C++ Chess engine.
 - Estimation of strength: ~2950 elo
 
 ## Next steps
+- implement <Nodetype> template for the search functions
+- local nodes_searched and sum on UCI metric output instead of atomic accumulator
 - Test, improve, possibly generate own .nnue file
+
 
 ## Meta-Plan
 [ ] Set up automatic testing environment via GitHub-Actions

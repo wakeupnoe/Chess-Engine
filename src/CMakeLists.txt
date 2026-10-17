@@ -12,7 +12,7 @@ add_library(EngineLib STATIC
     tt.cpp
     nnue.cpp
     zobrist.cpp
-    thread_local_heuristics.cpp
+    #thread_local_heuristics.cpp no longer needed
     time_manager.cpp
 )
 
