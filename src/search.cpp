@@ -3,7 +3,6 @@
 
 
 std::atomic<bool> abort_search = false;
-TimeManager TM;
 
 int LMR_table[64][64];
 

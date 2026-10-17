@@ -1,5 +1,5 @@
 #pragma once
-#include "types.h"          // for Color, etc.
+#include "types.h"
 #include <algorithm>
 #include <cstring>
 #include <vector>

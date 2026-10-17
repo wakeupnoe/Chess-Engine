@@ -8,27 +8,19 @@
 #include "tt.h"
 #include "move_picker.h"
 #include "nnue.h"
-#include "thread_local_heuristics.h"
+#include "thread_local_heuristics.h" // todo replace this with Worker class
 #include <cstring>
 #include <iostream>
 #include <chrono> // for metrics
 #include <atomic> // for multithreading
 #include <thread> // for multithreading
 
-// time mangement
-struct TimeManager {
-    bool time_control_enabled = false;
-    std::chrono::time_point<std::chrono::steady_clock> start_time;
-    int soft_limit = 0;
-    int hard_limit = 0;
-};
+#include "time_manager.h" // time mangement
+
 extern std::atomic<bool> abort_search;
-extern TimeManager TM;
+
 inline void check_time(){
-    if(!TM.time_control_enabled) return;
-    auto current_time = std::chrono::steady_clock::now();
-    std::chrono::duration<double, std::milli> elapsed = current_time - TM.start_time;
-    if(elapsed.count() >= TM.hard_limit){
+    if(TM.hard_limit_reached()){
         abort_search = true;
     }
 }
@@ -56,7 +48,7 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
 
     refresh_accumulators(board,accumulators[0]);
 
-    auto start_time = std::chrono::steady_clock::now();
+    //auto start_time = std::chrono::steady_clock::now();
     int prev_score = 0;
     int king_sq = lsb(board.get_pieces(Us, KING));
     bool in_check = is_square_attacked<Them>(static_cast<Square>(king_sq),board);
@@ -92,13 +84,13 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
 
                 // advanced UCI metrics at high depths
                 if(current_depth > 17 && thread_id == 0){
-                    auto now = std::chrono::steady_clock::now();
-                    std::chrono::duration<double, std::milli> elapsed = now - start_time;
+                    //auto now = std::chrono::steady_clock::now();
+                    //std::chrono::duration<double, std::milli> elapsed = now - start_time;
 
                     std::cout << "info depth " << current_depth
                               << " currmove " << move_to_string(board, move)
                               << " currmovenumber " << move_number
-                              << " time " << static_cast<int>(elapsed.count())
+                              << " time " << TM.elapsed_ms() // static_cast<int>(elapsed.count())
                               << " nodes " << nodes_searched
                               << std::endl;
                 }
@@ -158,9 +150,9 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
         if(thread_id == 0){
 
             // UCI metrics:
-            auto current_time = std::chrono::steady_clock::now();
-            std::chrono::duration<double> elapsed = current_time - start_time;
-            double seconds = elapsed.count();
+            //auto current_time = std::chrono::steady_clock::now();
+            //std::chrono::duration<double> elapsed = current_time - start_time;
+            double seconds = TM.elapsed_seconds(); //elapsed.count();
             
             uint64_t nps = (seconds > 0.0001) ? static_cast<uint64_t>(nodes_searched / seconds) : 0;
             int time_ms = static_cast<int>(seconds * 1000);
@@ -212,11 +204,7 @@ Move get_best_move(Board& board, int target_depth, int thread_id = 0){
         if(prev_score > MATE_SCORE - 100){
             break; // forced mate detected
         }
-        if(TM.time_control_enabled){ // soft limit hit (between depths)
-            auto current_time = std::chrono::steady_clock::now();
-            std::chrono::duration<double, std::milli> elapsed = current_time - TM.start_time;
-            if(elapsed.count() >= (TM.soft_limit * 0.8)) break;
-        }
+        if(TM.soft_limit_reached()) break;
     }
     return best_move_overall;
 }

@@ -21,6 +21,7 @@ constexpr int MAX_GAME_PLIES = 2048;
 constexpr int MAX_PLY = 128; // was 64, extended for quiescence search; upper bound of search depth
 constexpr int NUM_KILLERS = 2; // how many killermoves we store (this should be 2 if otherwise, we need to update move_picker!)
 
+enum class NodeType { Root, PV, NonPV };
 
 enum Color : uint8_t{WHITE,BLACK,NO_COLOR};
 
