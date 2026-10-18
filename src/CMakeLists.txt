@@ -8,11 +8,11 @@ add_library(EngineLib STATIC
     move_picker.cpp
     search.cpp
     see.cpp
-    uci.cpp
+    time_manager.cpp
     tt.cpp
+    uci.cpp
     nnue.cpp
     zobrist.cpp
-    time_manager.cpp
 )
 
 target_include_directories(EngineLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

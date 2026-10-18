@@ -31,7 +31,7 @@ A competitive C++ Chess engine.
 
 ## Next steps
 - implement <Nodetype> template for the search functions
-- local nodes_searched and sum on UCI metric output instead of atomic accumulator
+(- local nodes_searched and sum on UCI metric output instead of atomic accumulator)
 - Test, improve, possibly generate own .nnue file
 
 

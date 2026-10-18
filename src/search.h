@@ -45,10 +45,13 @@ private:
     inline void clear_search_stack(){
         std::fill(std::begin(search_stack), std::end(search_stack), SearchInfo{});
     }
-    template <Color Us> // add Nodetype later
+    template <Color Us, NodeType NT>
     int search(int depth, int alpha, int beta, int ply);
-    template <Color Us> // add Nodetype later
+    template <Color Us, NodeType NT>
     int quiescence_search(int alpha, int beta, int ply);
+    template <Color Us>
+    void print_uci_info(int current_depth, int prev_score, Move best_move);
+    
 
 public:
     int thread_id;
@@ -61,7 +64,8 @@ public:
     SearchInfo search_stack[MAX_PLY];
     int max_seldepth = 0;
     int local_counter = 0;
-    template <Color Us> // add Nodetype later
+    Move root_best_move = 0;
+    template <Color Us>
     Move get_best_move(int target_depth);
     inline void clear_histories() {
         std::memset(history_heuristic,0,sizeof(history_heuristic));

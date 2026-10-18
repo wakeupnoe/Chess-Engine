@@ -10,90 +10,26 @@ Move SearchWorker::get_best_move(int target_depth){
     assert(target_depth > 0 && target_depth <= MAX_PLY && "get_best_move: target_depth out of bounds!");
     assert(board.get_pieces(Us, KING) != 0ULL && "get_best_move: Root position has no King!");
 
-    constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     Move best_move_overall = 0;
     clear_search_stack();
+
     max_seldepth = 0;
+    root_best_move = 0;
 
     refresh_accumulators(board,accumulators[0]);
 
-    //auto start_time = std::chrono::steady_clock::now();
     int prev_score = 0;
-    int king_sq = lsb(board.get_pieces(Us, KING));
-    bool in_check = is_square_attacked<Them>(static_cast<Square>(king_sq),board);
     int actual_target = std::min(target_depth + thread_id % 2, MAX_PLY - 1);
-
-    Move tt_move = 0;
-    // dummy variables, will get optimized away:
-    int16_t tt_score = 0;
-    uint8_t tt_depth = 0;
-    TTFlag tt_flag = TT_NONE;
-    uint8_t tt_age= 0;
 
     for(int current_depth = 1; current_depth <= actual_target; current_depth++){
         int window_alpha = current_depth==1 ?  -INFINITY_SCORE : std::max(-INFINITY_SCORE, prev_score - 50);
         int window_beta = current_depth==1 ?  INFINITY_SCORE : std::min(INFINITY_SCORE, prev_score + 50);
-        
-        int root_newdepth = in_check ? current_depth : current_depth - 1;
-
-        bool tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
-
-        Move current_best_move = 0;
-        if(best_move_overall != 0) tt_move = best_move_overall;
         while(true){
-            int max_score = -INFINITY_SCORE;
-            int legal_moves = 0;
-            int alpha = window_alpha;
-            int beta = window_beta;
+            int max_score = search<Us,NodeType::Root>(current_depth,window_alpha, window_beta, 0);
 
-            MovePicker<Us> picker(board, tt_move, killer_moves[0][0], killer_moves[0][1], history_heuristic, counter_move_history); // do not use Coutermovehistory, so prev_to is defaulted to -1
-            Move move;
-            int move_number = 1;
-            while((move = picker.next_move()) != 0){
+            if(abort_search) break;
 
-                // advanced UCI metrics at high depths
-                if(current_depth > 17 && thread_id == 0){
-                    //auto now = std::chrono::steady_clock::now();
-                    //std::chrono::duration<double, std::milli> elapsed = now - start_time;
-
-                    std::cout << "info depth " << current_depth
-                              << " currmove " << move_to_string(board, move)
-                              << " currmovenumber " << move_number
-                              << " time " << TM.elapsed_ms() // static_cast<int>(elapsed.count())
-                              << " nodes " << nodes_searched
-                              << std::endl;
-                }
-
-                if(board.make_move<Us>(move, accumulators[0], accumulators[1])){
-                    legal_moves++;
-                    int score;
-                    if(legal_moves == 1){
-                        score = -search<Them>(root_newdepth, -beta, -alpha, 1);
-                    } else {
-                        score = -search<Them>(root_newdepth, -alpha - 1, -alpha, 1);
-                        if(score > alpha && score < beta){
-                            score = -search<Them>(root_newdepth, -beta, -alpha, 1);
-                        }
-                    }
-                    board.unmake_move<Us>(move);
-            
-                    if(score > max_score || current_best_move == 0){
-                        current_best_move = move;
-                        max_score = score;
-                    }
-                    alpha = std::max(alpha, max_score);
-                    if(alpha >=window_beta){
-                        break;
-                    }
-                }
-                move_number++;
-            }
-
-            if(legal_moves == 0){
-                if(in_check) prev_score = -MATE_SCORE;
-                else prev_score = 0;
-                break;
-            }
+            if(root_best_move != 0) best_move_overall = root_best_move;
 
             if(max_score <= window_alpha && window_alpha > -INFINITY_SCORE){ // doing worse than expected
                 window_alpha = -INFINITY_SCORE;
@@ -102,74 +38,16 @@ Move SearchWorker::get_best_move(int target_depth){
 
             if(max_score >= window_beta && window_beta < INFINITY_SCORE){ // doing better than expected
                 window_beta = INFINITY_SCORE;
-                tt_move = current_best_move;
                 continue;
             }
 
-            if(abort_search){
-                break;
-            }
             prev_score = max_score;
-            best_move_overall = current_best_move;
             break;
         }
-        if(abort_search){
-            break;
-        }
-        if(thread_id == 0){
+        
+        if(abort_search) break;
+        if(thread_id == 0) print_uci_info<Us>(current_depth,prev_score, best_move_overall);
 
-            // UCI metrics:
-            //auto current_time = std::chrono::steady_clock::now();
-            //std::chrono::duration<double> elapsed = current_time - start_time;
-            double seconds = TM.elapsed_seconds(); //elapsed.count();
-            
-            uint64_t nps = (seconds > 0.0001) ? static_cast<uint64_t>(nodes_searched / seconds) : 0;
-            int time_ms = static_cast<int>(seconds * 1000);
-            int hashfull = TT.get_hashfull();
-            
-            std::string score_string;
-            if(std::abs(prev_score) > MATE_SCORE - 100){
-                int plies_to_mate = MATE_SCORE - std::abs(prev_score);
-                int moves_to_mate = (plies_to_mate + 1) / 2;
-                if(prev_score < 0) moves_to_mate = -moves_to_mate;
-                score_string = "mate " + std::to_string(moves_to_mate);
-            } else {
-                score_string = "cp " + std::to_string(prev_score);
-            }
-            
-            // UCI type output
-            std::cout << "info depth " << current_depth
-            << " seldepth " << max_seldepth
-            << " score " << score_string
-            << " nodes " << nodes_searched
-            << " nps " << nps
-            << " hashfull " << hashfull
-            << " time " << time_ms
-            << " pv ";
-            Move pv_move;
-            if(current_best_move != 0){
-                std::cout << move_to_string(board,current_best_move) << " ";
-                Board temp_board = board;
-                if(Us == WHITE) temp_board.make_move<WHITE>(current_best_move, accumulators[0], accumulators[1]);
-                else temp_board.make_move<BLACK>(current_best_move, accumulators[0], accumulators[1]);
-                for(int i = 1; i<63; i++){
-                    bool tt_hit = TT.probe(temp_board.get_zobrist_key(), pv_move, tt_score,  tt_depth,  tt_flag,  tt_age);
-
-                    if(tt_hit && pv_move != 0){
-                        Color c = temp_board.get_side_to_move();
-                        
-                        std::cout << move_to_string(temp_board,pv_move) << " ";
-                        
-                        bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(pv_move, accumulators[i], accumulators[i+1]) : temp_board.make_move<BLACK>(pv_move, accumulators[i], accumulators[i+1]);
-                        if(!legal) break;
-                    } else {
-                        break;
-                    }
-                }
-                
-            }
-            std::cout << std::endl;
-        }
         if(prev_score > MATE_SCORE - 100){
             break; // forced mate detected
         }
@@ -178,13 +56,12 @@ Move SearchWorker::get_best_move(int target_depth){
     return best_move_overall;
 }
 
-// CONTRACT [Quiescence Search]:
-// - ASSUMES: ply is strictly between 0 and MAX_PLY - 1.
-// - GUARANTEES: Safe access to killer_moves array and prevents infinite capture recursion.
-
-template <Color Us>
+template <Color Us, NodeType NT>
 int SearchWorker::quiescence_search(int alpha, int beta, int ply){
     assert(ply >= 0 && ply < MAX_PLY && "qsearch: Ply out of bounds!");
+    
+    constexpr bool is_pv = (NT != NodeType::NonPV);
+    constexpr Color Them = Us == WHITE ? BLACK : WHITE;
 
     if(local_counter >= 2048){
         nodes_searched += local_counter;
@@ -195,7 +72,7 @@ int SearchWorker::quiescence_search(int alpha, int beta, int ply){
     if(abort_search) return 0;
 
     local_counter++;
-    max_seldepth = std::max(max_seldepth, ply);
+    if constexpr (is_pv) max_seldepth = std::max(max_seldepth, ply);
     int standard_pat = nnue_evaluate<Us>(accumulators[ply]);
     if(ply >= MAX_PLY - 1) return standard_pat;
 
@@ -213,31 +90,30 @@ int SearchWorker::quiescence_search(int alpha, int beta, int ply){
     uint8_t tt_age= 0;
     bool tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
 
-    if(tt_hit){
-        int real_tt_score = score_from_tt(tt_score, ply);
-        if(tt_flag == TT_EXACT) return real_tt_score;
-        if(tt_flag == TT_ALPHA && real_tt_score <= alpha) return real_tt_score;
-        if(tt_flag == TT_BETA && real_tt_score >= beta) return real_tt_score;
+    if constexpr (!is_pv){
+        if(tt_hit){
+            int real_tt_score = score_from_tt(tt_score, ply);
+            if(tt_flag == TT_EXACT) return real_tt_score;
+            if(tt_flag == TT_ALPHA && real_tt_score <= alpha) return real_tt_score;
+            if(tt_flag == TT_BETA && real_tt_score >= beta) return real_tt_score;
+        }
     }
     
-    constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
     
     int max_score = standard_pat;
     Move best_move = 0;
     MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1], history_heuristic, counter_move_history); // prev_to is defaulted to -1
     Move move;
     while((move = picker.next_move()) != 0){
-        if(picker.get_current_state() > GOOD_CAPTURES) break; // makes sense?
+        if(picker.get_current_state() > GOOD_CAPTURES) break;
         int flag = get_flags(move);
         bool is_quiet = flag <= 3;
         if(is_quiet) continue;
         
         if(board.make_move<Us>(move, accumulators[ply], accumulators[ply+1])){
-            // board.check_state_integrity();
-            int score = -quiescence_search<Them>(-beta, -alpha, ply + 1);
-            // board.check_state_integrity();
+            int score = -quiescence_search<Them, NT>(-beta, -alpha, ply + 1);
             board.unmake_move<Us>(move);
-
+            if(abort_search) return 0;
             best_move = (score > max_score ? move : best_move);
             max_score = std::max(score, max_score);
             alpha = std::max(alpha, max_score);
@@ -260,30 +136,39 @@ int SearchWorker::quiescence_search(int alpha, int beta, int ply){
 // - ASSUMES: ply is strictly between 0 and MAX_PLY.
 // - GUARANTEES: Safe recursive depth management without overflowing killer_moves or history heuristics.
 
-template <Color Us>
+template <Color Us, NodeType NT>
 int SearchWorker::search(int depth, int alpha, int beta, int ply){
     assert(ply >= 0 && ply < MAX_PLY && "search: Ply out of bounds!");
     assert(board.get_pieces(Us, KING) != 0ULL && "search: Board has no King!");
+
+    constexpr bool is_root = (NT == NodeType::Root);
+    constexpr bool is_pv = (NT != NodeType::NonPV);
+    constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
+
 
     if(local_counter >= 2048){
         nodes_searched += local_counter;
         local_counter = 0;
         check_time();
     }
+    local_counter++;
+    if constexpr (is_pv) max_seldepth = std::max(max_seldepth, ply);
     
     if(abort_search) return 0;
 
-    local_counter++;
-    if(board.is_draw()) return 0; // "ply > 0 &&" important if we remove root search function
-    if(ply >= MAX_PLY - 1) return nnue_evaluate<Us>(accumulators[ply]);
-    const bool is_pv = (beta - alpha > 1);
-
-    int original_alpha = alpha;
-    constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
-    
     int kingSq = lsb(board.get_pieces(Us,KING));
     bool in_check = is_square_attacked<Them>(static_cast<Square>(kingSq), board);
     int newdepth = in_check ? depth : depth - 1;
+
+    if constexpr (!is_root){
+        if(board.is_draw()) return 0;
+        if(ply >= MAX_PLY - 1) return nnue_evaluate<Us>(accumulators[ply]);
+        if(!in_check && depth <= 0){ // originally "==", but LMR might lead to negative depth
+            return quiescence_search<Us, NT>(alpha, beta, ply);
+        }
+    }
+
+    int original_alpha = alpha;
 
     Move tt_move = 0;
     int16_t tt_score = 0;
@@ -292,10 +177,6 @@ int SearchWorker::search(int depth, int alpha, int beta, int ply){
     TTFlag tt_flag = TT_NONE;
     uint8_t tt_age = 0;
     
-    if(!in_check && depth <= 0){ // originally "==", but LMR might lead to negative depth
-        return quiescence_search<Us>(alpha, beta, ply);
-    }
-
     bool tt_hit = false;
     int extension = 0;
     // TT probe
@@ -303,60 +184,67 @@ int SearchWorker::search(int depth, int alpha, int beta, int ply){
         tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
         if(tt_hit){
             int real_tt_score = score_from_tt(tt_score, ply);
-            if(!is_pv && (tt_depth >= depth || (std::abs(real_tt_score) > MATE_SCORE - 100))){
-                //cutoff?
-                if(tt_flag == TT_EXACT) return real_tt_score;
-                if(tt_flag == TT_ALPHA && real_tt_score <= alpha) return real_tt_score;
-                if(tt_flag == TT_BETA && real_tt_score >= beta) return real_tt_score;
+            if constexpr (!is_pv){
+                if((tt_depth >= depth || (std::abs(real_tt_score) > MATE_SCORE - 100))){
+                    //cutoff?
+                    if(tt_flag == TT_EXACT) return real_tt_score;
+                    if(tt_flag == TT_ALPHA && real_tt_score <= alpha) return real_tt_score;
+                    if(tt_flag == TT_BETA && real_tt_score >= beta) return real_tt_score;
+                }
             }
             
-            // singular extension
-            if(depth >= 6 && search_stack[ply].excluded_move == 0 && tt_move != 0 && tt_depth >= depth - 3 && tt_flag != TT_ALPHA && std::abs(real_tt_score) < MATE_SCORE - 100) {
-                int singular_beta = real_tt_score - (depth * 2);
-                int exclusion_depth = (depth -1) / 2;
-                search_stack[ply].excluded_move = tt_move;
-                int exclusion_score = search<Us>(exclusion_depth, singular_beta - 1, singular_beta, ply);
-                search_stack[ply].excluded_move = 0;
-                if(exclusion_score < singular_beta) extension = 1;
+            if constexpr (!is_root){
+                // singular extension
+                if(depth >= 6 && search_stack[ply].excluded_move == 0 && tt_move != 0 && tt_depth >= depth - 3 && tt_flag != TT_ALPHA && std::abs(real_tt_score) < MATE_SCORE - 100) {
+                    int singular_beta = real_tt_score - (depth * 2);
+                    int exclusion_depth = (depth -1) / 2;
+                    search_stack[ply].excluded_move = tt_move;
+                    int exclusion_score = search<Us, NodeType::NonPV>(exclusion_depth, singular_beta - 1, singular_beta, ply);
+                    search_stack[ply].excluded_move = 0;
+                    if(exclusion_score < singular_beta) extension = 1;
+                }
             }
         }
+    }
+    if constexpr (is_root){
+        if(root_best_move != 0) tt_move = root_best_move;
     }
 
     // For Reverse Futility Pruning: evalute board
-    // check_accumulator_desync(board, ply);
     int board_evaluation = nnue_evaluate<Us>(accumulators[ply]);
-    if(!is_pv && !in_check && search_stack[ply].excluded_move == 0){
-        // Reverse Futility Pruning
-        constexpr int RFP_MAX_DEPTH = 3;
-        constexpr int BASE_MARGIN = 50;
-        constexpr int MARGIN_MULTIPLIER = 100;
-        if(!in_check && depth <= RFP_MAX_DEPTH){
-            int margin = BASE_MARGIN + depth * MARGIN_MULTIPLIER;
-            if(board_evaluation - margin >= beta) return board_evaluation;
-        }
-    
-        // Null-Move Pruning
-        int R = 3 + depth / 3;//5+depth/3; // was 2 OR 5 + depth/4;// 2; // Depth reduction if we are safe
-        bool prev_was_null = (ply > 0 && search_stack[ply - 1].move_played == 0);
-        if(!prev_was_null && depth >= R+1 && board_evaluation >= beta && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
-            search_stack[ply].move_played = 0;
-            board.make_null_move<Us>(accumulators[ply], accumulators[ply+1]);
-            int null_score = -search<Them>(newdepth - R, -beta, -beta + 1, ply + 1);
-            board.unmake_null_move<Us>();
-            if(null_score >= beta){
-                return beta;
+
+    if constexpr (!is_pv){
+        if(!in_check && search_stack[ply].excluded_move == 0){
+            // Reverse Futility Pruning
+            constexpr int RFP_MAX_DEPTH = 3;
+            constexpr int BASE_MARGIN = 50;
+            constexpr int MARGIN_MULTIPLIER = 100;
+            if(!in_check && depth <= RFP_MAX_DEPTH){
+                int margin = BASE_MARGIN + depth * MARGIN_MULTIPLIER;
+                if(board_evaluation - margin >= beta) return board_evaluation;
+            }
+        
+            // Null-Move Pruning
+            int R = 3 + depth / 3;//5+depth/3; // was 2 OR 5 + depth/4;// 2; // Depth reduction if we are safe
+            bool prev_was_null = (ply > 0 && search_stack[ply - 1].move_played == 0);
+            if(!prev_was_null && depth >= R+1 && board_evaluation >= beta && (board.get_color_pieces(Us) ^ board.get_pieces(Us,PAWN) ^ board.get_pieces(Us, KING)) != 0ULL){
+                search_stack[ply].move_played = 0;
+                board.make_null_move<Us>(accumulators[ply], accumulators[ply+1]);
+                int null_score = -search<Them, NodeType::NonPV>(newdepth - R, -beta, -beta + 1, ply + 1);
+                board.unmake_null_move<Us>();
+                if(abort_search) return 0;
+                if(null_score >= beta) return beta;
             }
         }
     }
     
-    // Internal Itterative Deepening, replacable by IIR (iterative deepening will fix the rest)
-    if (tt_move == 0 && depth >= 4 && !in_check && search_stack[ply].excluded_move == 0){
-        //search<Us>(board, depth - 2, alpha, beta, ply); // just to populate the TT table (with a shallow search)
-        //tt_hit = TT.probe(board.get_zobrist_key(), tt_move, tt_score,  tt_depth,  tt_flag,  tt_age);
-        depth--;
-        newdepth--; //IIR needs good move ordering even when we have no TT move
+    // former Internal Itterative Deepening, now replaced by IIR (iterative deepeningat root will fix the rest)
+    if constexpr (!is_root){
+        if (tt_move == 0 && depth >= 4 && !in_check && search_stack[ply].excluded_move == 0){
+            depth--;
+            newdepth--; //IIR needs good move ordering even when we have no TT move!
+        }
     }
-
     
     int max_score = -INFINITY_SCORE;
     int legal_moves = 0;
@@ -386,31 +274,40 @@ int SearchWorker::search(int depth, int alpha, int beta, int ply){
         constexpr int FP_BASE_MARGIN = 100;
         constexpr int FP_MARGIN_MULTIPLIER = 100;
 
-       
-        // Futility Pruning
-        if(!in_check && legal_moves>0 && depth <= FP_MAX_DEPTH && is_quiet){
-            int margin = FP_BASE_MARGIN + depth * FP_MARGIN_MULTIPLIER;
-            if(board_evaluation + margin <= alpha) continue; // skip this bad move
-        }
-
-        // Late Move Pruning
-        if(!in_check && legal_moves>0 && depth <= LMP_MAX_DEPTH && is_quiet){
-            int lmp_limit = 3 + (depth * depth);
-            if(legal_moves > lmp_limit){ // already searched a lot of quiet moves 
-                continue;
-            }
-        }
+       if constexpr (!is_root){
+           // Futility Pruning
+           if(!in_check && legal_moves>0 && depth <= FP_MAX_DEPTH && is_quiet){
+               int margin = FP_BASE_MARGIN + depth * FP_MARGIN_MULTIPLIER;
+               if(board_evaluation + margin <= alpha) continue; // skip this bad move
+           }
+   
+           // Late Move Pruning
+           if(!in_check && legal_moves>0 && depth <= LMP_MAX_DEPTH && is_quiet){
+               int lmp_limit = 3 + (depth * depth);
+               if(legal_moves > lmp_limit){ // already searched a lot of quiet moves 
+                   continue;
+               }
+           }
+       }
 
         search_stack[ply].move_played = move;
         if(board.make_move<Us>(move, accumulators[ply], accumulators[ply+1])){
             legal_moves++;
-            int score;
+            if constexpr (is_root){
+                if(TM.elapsed_seconds() > 3.0 && thread_id == 0)
+                std::cout << "info depth " << depth
+                          << " currmove " << move_to_string(board, move)
+                          << " currmovenumber " << legal_moves
+                          << " time " << TM.elapsed_ms()
+                          << " nodes " << nodes_searched << std::endl;
+            }
 
+            int score;
             int current_depth = newdepth + (move==tt_move ? extension : 0);
 
             if(legal_moves == 1){
-                // PV move
-                score = -search<Them>(current_depth, -beta, -alpha, ply + 1);
+                constexpr NodeType NextNT = is_pv ? NodeType::PV : NodeType::NonPV;
+                score = -search<Them, NextNT>(current_depth, -beta, -alpha, ply + 1);
             } else {
                 int R_LMR = 0;
 
@@ -419,19 +316,22 @@ int SearchWorker::search(int depth, int alpha, int beta, int ply){
                     if(picker.get_current_state() == KILLERS) R_LMR = R_LMR > 0 ? R_LMR - 1 : R_LMR;
                 }
 
-                score = -search<Them>(std::max(0,current_depth - R_LMR), -alpha - 1, -alpha, ply + 1);
+                score = -search<Them, NodeType::NonPV>(std::max(0,current_depth - R_LMR), -alpha - 1, -alpha, ply + 1);
 
                 if(score > alpha && R_LMR > 0){
-                    score = -search<Them>(current_depth, -alpha -1, -alpha, ply + 1);
+                    score = -search<Them, NodeType::NonPV>(current_depth, -alpha -1, -alpha, ply + 1);
                 }
-
-                if(score > alpha && score < beta){
-                    score = -search<Them>(current_depth, -beta, -alpha, ply + 1);
+                if constexpr (is_pv) {
+                    if(score > alpha && score < beta){
+                        score = -search<Them, NodeType::PV>(current_depth, -beta, -alpha, ply + 1);
+                    }
                 }
             }
 
             board.unmake_move<Us>(move);
+            if(abort_search) return 0;
             best_move = (score > max_score ? move : best_move);
+            if constexpr (is_root) root_best_move = (score > max_score ? move : root_best_move);
             max_score = std::max(score, max_score);
             if(beta <= max_score){
                 if(is_quiet){
@@ -481,12 +381,7 @@ int SearchWorker::search(int depth, int alpha, int beta, int ply){
         }
     }
     if(legal_moves == 0){
-        int kingSq = lsb(board.get_pieces(Us,KING));
-        if(is_square_attacked<Them>(static_cast<Square>(kingSq), board)){
-            max_score = - MATE_SCORE + ply; //checkmate
-        } else {
-            max_score = 0; //Stalemate
-        }
+        max_score = (in_check) ? - MATE_SCORE + ply : 0;
     }
     if(!abort_search && search_stack[ply].excluded_move == 0){
         TTFlag flag = (max_score <= original_alpha) ? TT_ALPHA : (max_score >= beta ? TT_BETA : TT_EXACT);
@@ -494,6 +389,68 @@ int SearchWorker::search(int depth, int alpha, int beta, int ply){
     }
     return max_score;
 }
+
+template <Color Us>
+void SearchWorker::print_uci_info(int current_depth, int prev_score, Move current_best_move){
+    // UCI metrics:
+    Move tt_move = 0;
+    // dummy variables, will get optimized away:
+    int16_t tt_score = 0;
+    uint8_t tt_depth = 0;
+    TTFlag tt_flag = TT_NONE;
+    uint8_t tt_age = 0;
+
+    double seconds = TM.elapsed_seconds(); //elapsed.count();
+    
+    uint64_t nps = (seconds > 0.0001) ? static_cast<uint64_t>(nodes_searched / seconds) : 0;
+    int time_ms = static_cast<int>(seconds * 1000);
+    int hashfull = TT.get_hashfull();
+    
+    std::string score_string;
+    if(std::abs(prev_score) > MATE_SCORE - 100){
+        int plies_to_mate = MATE_SCORE - std::abs(prev_score);
+        int moves_to_mate = (plies_to_mate + 1) / 2;
+        if(prev_score < 0) moves_to_mate = -moves_to_mate;
+        score_string = "mate " + std::to_string(moves_to_mate);
+    } else {
+        score_string = "cp " + std::to_string(prev_score);
+    }
+    
+    // UCI type output
+    std::cout << "info depth " << current_depth
+    << " seldepth " << max_seldepth
+    << " score " << score_string
+    << " nodes " << nodes_searched
+    << " nps " << nps
+    << " hashfull " << hashfull
+    << " time " << time_ms
+    << " pv ";
+    Move pv_move;
+    if(current_best_move != 0){
+        std::cout << move_to_string(board,current_best_move) << " ";
+        Board temp_board = board;
+        if(Us == WHITE) temp_board.make_move<WHITE>(current_best_move, accumulators[0], accumulators[1]);
+        else temp_board.make_move<BLACK>(current_best_move, accumulators[0], accumulators[1]);
+        for(int i = 1; i<63; i++){
+            bool tt_hit = TT.probe(temp_board.get_zobrist_key(), pv_move, tt_score,  tt_depth,  tt_flag,  tt_age);
+
+            if(tt_hit && pv_move != 0){
+                Color c = temp_board.get_side_to_move();
+                
+                std::cout << move_to_string(temp_board,pv_move) << " ";
+                
+                bool legal = (c==WHITE) ? temp_board.make_move<WHITE>(pv_move, accumulators[i], accumulators[i+1]) : temp_board.make_move<BLACK>(pv_move, accumulators[i], accumulators[i+1]);
+                if(!legal) break;
+            } else {
+                break;
+            }
+        }
+        
+    }
+    std::cout << std::endl;
+}
+
+
 
 void init_lmr_table(){
     for(int depth = 0; depth < 64; depth++){
