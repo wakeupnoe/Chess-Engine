@@ -7,9 +7,6 @@ int LMR_table[64][64];
 
 template <Color Us>
 Move SearchWorker::get_best_move(int target_depth){
-    assert(target_depth > 0 && target_depth <= MAX_PLY && "get_best_move: target_depth out of bounds!");
-    assert(board.get_pieces(Us, KING) != 0ULL && "get_best_move: Root position has no King!");
-
     Move best_move_overall = 0;
     clear_search_stack();
 
@@ -130,17 +127,8 @@ int SearchWorker::quiescence_search(int alpha, int beta, int ply){
 }
 
 
-
-
-// CONTRACT [Main Search]:
-// - ASSUMES: ply is strictly between 0 and MAX_PLY.
-// - GUARANTEES: Safe recursive depth management without overflowing killer_moves or history heuristics.
-
 template <Color Us, NodeType NT>
 int SearchWorker::search(int depth, int alpha, int beta, int ply){
-    assert(ply >= 0 && ply < MAX_PLY && "search: Ply out of bounds!");
-    assert(board.get_pieces(Us, KING) != 0ULL && "search: Board has no King!");
-
     constexpr bool is_root = (NT == NodeType::Root);
     constexpr bool is_pv = (NT != NodeType::NonPV);
     constexpr Color Them = Us == WHITE ? BLACK : WHITE; 
@@ -400,7 +388,7 @@ void SearchWorker::print_uci_info(int current_depth, int prev_score, Move curren
     TTFlag tt_flag = TT_NONE;
     uint8_t tt_age = 0;
 
-    double seconds = TM.elapsed_seconds(); //elapsed.count();
+    double seconds = TM.elapsed_seconds();
     
     uint64_t nps = (seconds > 0.0001) ? static_cast<uint64_t>(nodes_searched / seconds) : 0;
     int time_ms = static_cast<int>(seconds * 1000);

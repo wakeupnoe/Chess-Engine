@@ -7,9 +7,8 @@
 #include "see.h"
 #include "tt.h"
 #include "move_picker.h"
-#include "time_manager.h" // time mangement
+#include "time_manager.h"
 #include "nnue.h"
-//#include "thread_local_heuristics.h" // todo replace this with Worker class
 #include <cstring>
 #include <iostream>
 #include <chrono> // for metrics
