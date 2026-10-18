@@ -282,7 +282,7 @@ int SearchWorker::search(int depth, int alpha, int beta, int ply){
         if(board.make_move<Us>(move, accumulators[ply], accumulators[ply+1])){
             legal_moves++;
             if constexpr (is_root){
-                if(TM.elapsed_seconds() > 3.0 && thread_id == 0)
+                if(TM.elapsed_seconds() > 3.0 && depth > 15 && thread_id == 0)
                 std::cout << "info depth " << depth
                           << " currmove " << move_to_string(board, move)
                           << " currmovenumber " << legal_moves

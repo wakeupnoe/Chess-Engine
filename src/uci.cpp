@@ -9,7 +9,7 @@ extern std::atomic<bool> abort_search;
 namespace UCI {
     std::vector<std::thread> search_threads;
     std::vector<SearchWorker> workers;
-    int num_threads = 8;
+    int num_threads = 1;
 
     void setup_time_controle(Color Us, int wtime, int btime, int winc, int binc, int moves_to_go = 40){
         TM.time_control_enabled = true;
@@ -98,6 +98,7 @@ namespace UCI {
                         }
                     }
                 }
+                std::cout << "num thread: " << num_threads << std::endl;
             } else if(token == "go"){
                 abort_search = true;
                 for(auto& t : search_threads){
@@ -139,7 +140,10 @@ namespace UCI {
                         workers[i].board = board;
                         workers[i].thread_id = i;
                         Move best_move = (board.get_side_to_move() == WHITE) ? workers[i].get_best_move<WHITE>(depth) : workers[i].get_best_move<BLACK>(depth);
-                        if(i == 0) std::cout << "bestmove " << move_to_string(board, best_move) << std::endl;
+                        if(i == 0){
+                            std::cout << "bestmove " << move_to_string(board, best_move) << std::endl;
+                            abort_search = true;
+                        }
                     });
                 }
             }

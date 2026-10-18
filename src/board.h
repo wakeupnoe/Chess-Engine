@@ -37,12 +37,6 @@ public:
     template <Color Us>
     void unmake_null_move();
 
-    // CONTRACT [Memory Primitives]:
-    // - ASSUMES: Color 'c' is strictly WHITE (0) or BLACK (1). Passing NO_COLOR (2) is fatal.
-    // - ASSUMES: Piece 'p' is strictly PAWN (0) to KING (5). Passing NO_PIECE_TYPE (6) or garbage is fatal.
-    // - ASSUMES: Squares ('sq', 'from_sq', 'to_sq') are strictly 0 to 63. Passing NO_SQUARE (64) is fatal.
-    // - GUARANTEES: Strictly bounds-checked board state and Zobrist synchronization.
-
     inline Bitboard get_pieces(Color c, Piece p) const { assert(c == WHITE || c == BLACK); assert(p >= PAWN && p <= KING); return pieces[c][p]; }
     inline Bitboard get_color_pieces(Color c) const { assert(c == WHITE || c == BLACK); return colorPieces[c]; }
     inline Bitboard get_all_pieces() const { return allPieces; }
@@ -106,12 +100,6 @@ public:
     }
 };
 
-// CONTRACT [Null Moves]:
-// - ASSUMES (make): gamePly is strictly less than MAX_GAME_PLIES.
-// - ASSUMES (make): En_Passant_Target_Square is strictly 0-63 or NO_SQUARE (64) to prevent Zobrist array overflow.
-// - ASSUMES (unmake): gamePly is strictly greater than 0.
-// - GUARANTEES: A safe "pass" turn that perfectly syncs the Zobrist key and History.
-
 template <Color Us>
 void Board::make_null_move(const Accumulator& prev_acc, Accumulator& next_acc){
     next_acc = prev_acc;
@@ -137,12 +125,6 @@ void Board::unmake_null_move(){
     sideToMove = Us;
 }
 
-
-// CONTRACT [make_move & unmake_move]:
-// - ASSUMES: The provided move is at least Pseudo-Legal for the current board state.
-// - ASSUMES: gamePly < MAX_GAME_PLIES (History array bounds).
-// - GUARANTEES: Fully executes the state transition. 
-// - GUARANTEES: Returns 'false' ONLY if the move leaves the active King in check.
 
 template <Color Us> // Color of the side that makes the move
 bool Board::make_move(Move move, const Accumulator& prev_acc, Accumulator& next_acc){
