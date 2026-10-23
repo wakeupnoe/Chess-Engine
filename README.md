@@ -22,6 +22,7 @@ A competitive C++ Chess engine.
 - NNUE integrted (Stockfish 12 weights)
 - ~2500 lines of code
 - SearchWorker class refactoring complete
+- implement <Nodetype> template for the search functions
 
 ## Performance
 - Perft runs at ~75M NPS (without Bulk Counting)
@@ -30,14 +31,14 @@ A competitive C++ Chess engine.
 - Estimation of strength: ~2950 elo
 
 ## Next steps
-- implement <Nodetype> template for the search functions
+- generate own .nnue file
+- integrate search config for hyperparameter testing /  presentation
 (- local nodes_searched and sum on UCI metric output instead of atomic accumulator)
-- Test, improve, possibly generate own .nnue file
 
 
 ## Meta-Plan
 [ ] Set up automatic testing environment via GitHub-Actions
-[ ] Build the project modular and testable, so that bugs get 
+[ ] Build the project modular and testable, so that bugs get
 [ ] No AI-written code, only feedback and conceptual use of it
 Use of AI in:
 - all of tests/, in .github/workflows/ci.yml, in evaluation.h and AIPerft.cpp/AIPerft.h, otherwise src is AI code free
@@ -46,4 +47,4 @@ Use of AI in:
 - Highly optimized low level operations
 - Alpha-Beta pruning (pruned to the death)
 - evaluation via NNUE
-- 2500 elo+ reached!
+- 2800 elo+ reached!
