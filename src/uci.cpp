@@ -9,7 +9,7 @@ extern std::atomic<bool> abort_search;
 namespace UCI {
     std::vector<std::thread> search_threads;
     std::vector<SearchWorker> workers;
-    int num_threads = 8;
+    int num_threads = 1;
 
     void setup_time_controle(Color Us, int wtime, int btime, int winc, int binc, int moves_to_go = 40){
         TM.time_control_enabled = true;

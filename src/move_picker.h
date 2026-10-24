@@ -3,13 +3,8 @@
 #include "board.h"
 #include "movegen.h"
 #include "see.h"
-//#include "thread_local_heuristics.h"
 // temp
 #include "utils.h"
-
-// moved to thread local heuristics
-//extern int history_heuristic[2][64][64];
-//extern int counter_move_history[2][64][64][64];
 
 enum MovePickerState : uint8_t {
     TT_MOVE, GENERATE_CAPTURES, GOOD_CAPTURES, KILLERS, GENERATE_QUIETS, QUIETS, BAD_CAPTURES
@@ -41,7 +36,7 @@ const int FLAG_BONUS[16] = { // AI Generated!
 };
 
 
-template <Color Us>
+template <Color Us, bool QSearch = false>
 class MovePicker{
 private:
     MovePickerState current_state;
@@ -129,9 +124,9 @@ public:
             switch (current_state) {
             case TT_MOVE:{
                 current_state = GENERATE_CAPTURES;
-                if(is_pseudo_legal<Us>(board, tt_move)){
-                    return tt_move;
-                }
+
+                if constexpr (QSearch) {if(get_flags(tt_move) < 4) continue;}
+                if(is_pseudo_legal<Us>(board, tt_move)) return tt_move;
                 continue;
             }
             case GENERATE_CAPTURES: {
@@ -151,6 +146,7 @@ public:
                 }
 
                 if(best_index == -1 || best_score < 0){
+                    if constexpr (QSearch) return 0;
                     current_state = KILLERS;
                     continue;
                 }

@@ -99,14 +99,10 @@ int SearchWorker::quiescence_search(int alpha, int beta, int ply){
     
     int max_score = standard_pat;
     Move best_move = 0;
-    MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1], history_heuristic, counter_move_history); // prev_to is defaulted to -1
+    MovePicker<Us, true> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1], history_heuristic, counter_move_history); // prev_to is defaulted to -1
     Move move;
     while((move = picker.next_move()) != 0){
-        if(picker.get_current_state() > GOOD_CAPTURES) break;
-        int flag = get_flags(move);
-        bool is_quiet = flag <= 3;
-        if(is_quiet) continue;
-        
+        // move_picker only generates captures and promotions with qsearch=true
         if(board.make_move<Us>(move, accumulators[ply], accumulators[ply+1])){
             int score = -quiescence_search<Them, NT>(-beta, -alpha, ply + 1);
             board.unmake_move<Us>(move);
@@ -243,6 +239,7 @@ int SearchWorker::search(int depth, int alpha, int beta, int ply){
     Move prev_move = (ply > 0) ? search_stack[ply - 1].move_played : 0;
     int prev_to = (prev_move != 0) ? get_to_sq(prev_move) : -1;
 
+    // qsearch=false is defaulted
     MovePicker<Us> picker(board, tt_move, killer_moves[ply][0], killer_moves[ply][1], history_heuristic, counter_move_history, prev_to);
     Move move;
 
