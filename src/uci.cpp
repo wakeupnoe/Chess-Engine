@@ -9,7 +9,7 @@ extern std::atomic<bool> abort_search;
 namespace UCI {
     std::vector<std::thread> search_threads;
     std::vector<SearchWorker> workers;
-    int num_threads = 1;
+    int num_threads = 8;
 
     void setup_time_controle(Color Us, int wtime, int btime, int winc, int binc, int moves_to_go = 40){
         TM.time_control_enabled = true;
@@ -46,7 +46,64 @@ namespace UCI {
             } else if(token == "uci"){
                 std::cout << "id name Chess-Engine" << std::endl;
                 std::cout << "id author ms1000" << std::endl;
+                std::cout << "option name Threads type spin default 8 min 1 max 64" << std::endl;
+                std::cout << "option name Hash type spin default 512 min 16 max 1024" << std::endl;
                 std::cout << "uciok" << std::endl;   
+            } else if(token == "setoption"){
+                abort_search = true;
+                for(auto& t : search_threads){
+                    if(t.joinable()) t.join();
+                }
+                search_threads.clear();
+                abort_search = false;
+                // format: setoption name <id with spaces> [value <x with spaces>]
+                iss >> token;
+                if(token == "name"){
+                    std::string opt_name, opt_value;
+                    bool has_value = false;
+                    while(iss >> token){
+                        if(token == "value"){
+                            has_value = true;
+                            break;
+                        }
+                        if(!opt_name.empty()) opt_name += " ";
+                        opt_name += token;
+                    }
+                    if(has_value){
+                        while(iss >> token){
+                            if(!opt_value.empty()) opt_value += " ";
+                            opt_value += token;
+                        }
+                    }
+                    // option names are case-insensitive
+                    for(char& c : opt_name){
+                        if(c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+                    }
+
+                    // numeric value (ignored if missing / not a number)
+                    bool value_ok = false;
+                    int value = 0;
+                    if(!opt_value.empty()){
+                        try {
+                            value = std::stoi(opt_value);
+                            value_ok = true;
+                        } catch(...) {
+                            value_ok = false;
+                        }
+                    }
+
+                    if(opt_name == "threads"){
+                        if(value_ok){
+                            num_threads = std::min(64, std::max(1, value));
+                        }
+                    } else if(opt_name == "hash"){
+                        if(value_ok){
+                            int TT_size = std::min(1024, std::max(16, value));
+                            TT.resize(TT_size); // resize() takes megabytes
+                        }
+                    }
+                    // unknown options are silently ignored
+                }
             } else if(token == "isready"){
                 std::cout << "readyok" << std::endl;
             } else if(token == "eval"){
